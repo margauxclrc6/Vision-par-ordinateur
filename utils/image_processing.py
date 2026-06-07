@@ -1,8 +1,4 @@
-"""
-Low-level image processing utilities.
-Only basic CV operations are used: filtering, Hough transform, morphology, rotation.
-No high-level rectangle detection or checkbox detection.
-"""
+"""Low-level image processing utilities (filtering, Hough, morphology, rotation)."""
 
 import cv2
 import numpy as np
@@ -25,10 +21,7 @@ def preprocess(gray):
 
 
 def deskew(gray):
-    """
-    Correct document skew using Hough line transform.
-    Returns the deskewed grayscale image and the angle in degrees.
-    """
+    """Correct document skew using Hough lines. Returns (deskewed_image, angle_degrees)."""
     binary = preprocess(gray)
     edges = cv2.Canny(binary, 50, 150, apertureSize=3)
     lines = cv2.HoughLines(edges, 1, np.pi / 180, threshold=200)
@@ -64,10 +57,7 @@ def morpho_close(binary, ksize=5):
 
 
 def find_horizontal_lines(binary, min_len_ratio=0.3):
-    """
-    Detect horizontal lines via morphological erosion.
-    Returns a binary mask with only horizontal lines.
-    """
+    """Detect horizontal lines via morphological erosion. Returns a binary mask."""
     h, w = binary.shape
     min_len = int(w * min_len_ratio)
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (min_len, 1))
@@ -78,10 +68,7 @@ def find_horizontal_lines(binary, min_len_ratio=0.3):
 
 
 def find_vertical_lines(binary, min_len_ratio=0.3):
-    """
-    Detect vertical lines via morphological erosion.
-    Returns a binary mask with only vertical lines.
-    """
+    """Detect vertical lines via morphological erosion. Returns a binary mask."""
     h, w = binary.shape
     min_len = int(h * min_len_ratio)
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, min_len))
@@ -93,22 +80,8 @@ def find_vertical_lines(binary, min_len_ratio=0.3):
 
 def detect_grid_cells(binary, n_rows, n_cols, region=None):
     """
-    Divide a region of the image into a grid of n_rows x n_cols cells
-    and determine which cells are filled (dark pixel ratio above threshold).
-
-    Parameters
-    ----------
-    binary : np.ndarray
-        Binarized image (0=black, 255=white).
-    n_rows, n_cols : int
-        Grid dimensions.
-    region : tuple (x, y, w, h) or None
-        Region of interest. If None, uses the full image.
-
-    Returns
-    -------
-    grid : np.ndarray of bool, shape (n_rows, n_cols)
-        True where a cell is marked/filled.
+    Divide a region into an n_rows x n_cols grid and return a bool array
+    indicating which cells have enough dark pixels to be considered filled.
     """
     if region is not None:
         x, y, w, h = region
@@ -127,7 +100,6 @@ def detect_grid_cells(binary, n_rows, n_cols, region=None):
         for c in range(n_cols):
             cell = inv[r*cell_h:(r+1)*cell_h, c*cell_w:(c+1)*cell_w]
             dark_ratio = np.sum(cell > 0) / cell.size
-            # A filled cell has significantly more dark pixels
             grid[r, c] = dark_ratio > 0.15
 
     return grid
@@ -139,10 +111,7 @@ def crop_region(img, x, y, w, h):
 
 
 def normalize_signature(sig_gray, target_size=(128, 64)):
-    """
-    Normalize a signature image to a fixed size.
-    Binarize, crop to bounding box, then resize.
-    """
+    """Binarize, crop to bounding box, then resize to target_size."""
     _, binary = cv2.threshold(sig_gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     coords = cv2.findNonZero(binary)
     if coords is None:
@@ -154,10 +123,7 @@ def normalize_signature(sig_gray, target_size=(128, 64)):
 
 
 def image_similarity(img_a, img_b):
-    """
-    Compute normalized cross-correlation between two same-size binary images.
-    Returns a score in [0, 1].
-    """
+    """Normalized cross-correlation between two binary images. Returns score in [0, 1]."""
     if img_a.shape != img_b.shape:
         img_b = cv2.resize(img_b, (img_a.shape[1], img_a.shape[0]),
                            interpolation=cv2.INTER_AREA)

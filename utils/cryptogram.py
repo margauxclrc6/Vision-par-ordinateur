@@ -1,13 +1,6 @@
 """
 Cryptogram comparison utilities.
-
-The cryptogram is the small graphic at the bottom of each page.
-All pages of the same exam must have the same cryptogram.
-
-Strategy:
-  1. Extract the cryptogram region (low-level morphological crop).
-  2. Normalize to a fixed size.
-  3. Compare successive pages using NCC — all pages must match page 1.
+Checks that the small graphic at the bottom of every page matches page 1's cryptogram.
 """
 
 import cv2
@@ -16,7 +9,6 @@ from utils.image_processing import preprocess, normalize_signature, image_simila
 from utils.form_layout import PAGE1_FIELDS, crop_field
 
 
-# NCC threshold to consider two cryptograms identical
 CRYPTO_THRESHOLD = 0.70
 CRYPTO_SIZE = (64, 32)
 
@@ -30,14 +22,7 @@ def extract_cryptogram(page_gray):
 
 
 def validate_cryptograms(pages_gray):
-    """
-    Verify that all pages share the same cryptogram as page 1.
-
-    Returns
-    -------
-    valid : bool
-    scores : list of float  (NCC of each page vs page 1)
-    """
+    """Check that all pages share the same cryptogram as page 1. Returns (valid, scores)."""
     if len(pages_gray) == 0:
         return False, []
 

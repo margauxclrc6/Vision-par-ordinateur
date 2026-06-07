@@ -1,10 +1,6 @@
 """
 OCR utilities for printed and handwritten text.
-
-Printed text  → Tesseract (pytesseract)  — high accuracy on clean documents.
-Handwritten   → a lightweight CNN trained on EMNIST / custom data.
-
-The CNN is loaded once (lazy) and reused across calls.
+Printed text uses Tesseract, handwritten digits use a small CNN (falls back to Tesseract).
 """
 
 import cv2
@@ -24,24 +20,11 @@ except ImportError:
     _TORCH_AVAILABLE = False
 
 
-# ── Tesseract helpers ──────────────────────────────────────────────────────────
-
 def read_printed_text(img_gray, config="--psm 6"):
-    """
-    Read printed text from a grayscale image crop using Tesseract.
-
-    Parameters
-    ----------
-    img_gray : np.ndarray
-    config   : str  — Tesseract page-segmentation mode and options.
-
-    Returns
-    -------
-    text : str  (stripped)
-    """
+    """Run Tesseract on a grayscale crop and return stripped text."""
     if not _TESSERACT_AVAILABLE:
         return ""
-    # Light preprocessing for better OCR
+    # light binarization helps Tesseract
     _, binary = cv2.threshold(img_gray, 0, 255,
                                cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     text = pytesseract.image_to_string(binary, config=config)
@@ -58,8 +41,6 @@ def read_printed_field(img_gray):
     """Read a single-line printed field."""
     return read_printed_text(img_gray, config="--psm 7")
 
-
-# ── Handwritten digit CNN ──────────────────────────────────────────────────────
 
 class _DigitCNN(object if not _TORCH_AVAILABLE else nn.Module):
     """Minimal LeNet-5 style CNN for single handwritten digit recognition."""
@@ -102,21 +83,13 @@ def _get_digit_model():
         model.eval()
         _digit_model = model
     except FileNotFoundError:
-        # Model not yet trained; fall back to Tesseract
+        # model not trained yet, fall back to Tesseract
         _digit_model = None
     return _digit_model
 
 
 def read_handwritten_digit(img_gray):
-    """
-    Recognize a single handwritten digit from a 28×28-compatible crop.
-
-    Falls back to Tesseract if the CNN model is not available.
-
-    Returns
-    -------
-    digit : int  (0-9) or -1 on failure.
-    """
+    """Recognize a single handwritten digit (28x28-compatible crop). Returns 0-9 or -1 on failure."""
     model = _get_digit_model()
     if model is not None:
         import torch
@@ -140,13 +113,10 @@ def read_handwritten_digit(img_gray):
 
 
 def read_handwritten_text(img_gray):
-    """
-    Read free-form handwritten text (e.g. name, first name).
-    Uses Tesseract with handwriting-friendly settings.
-    """
+    """Read free-form handwritten text (name, first name, etc.) using Tesseract."""
     if not _TESSERACT_AVAILABLE:
         return ""
-    # Scale up for better recognition
+    # scale up for better recognition
     h, w = img_gray.shape
     scale = max(1, 60 // h)
     resized = cv2.resize(img_gray, (w * scale, h * scale),
@@ -155,10 +125,7 @@ def read_handwritten_text(img_gray):
 
 
 def read_handwritten_number(img_gray):
-    """
-    Read a handwritten number (mantissa + exponent or integer).
-    Returns the raw string.
-    """
+    """Read a handwritten number (mantissa/exponent or integer). Returns raw string."""
     if not _TESSERACT_AVAILABLE:
         return ""
     _, binary = cv2.threshold(img_gray, 0, 255,

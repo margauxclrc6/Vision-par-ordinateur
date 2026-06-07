@@ -1,11 +1,6 @@
 """
-Student ID and group extraction from the graphical bubble grid on page 1.
-
-The ID grid is a matrix of filled/empty bubbles.  Each column encodes one digit
-in a decimal representation (bubbles 0-9 from top to bottom).  The group grid
-follows the same principle with fewer columns.
-
-All detection uses low-level morphological operations — no high-level detectors.
+Extracts student ID and group from the bubble grid on page 1.
+Each column encodes one digit (bubbles 0-9 top to bottom).
 """
 
 import cv2
@@ -13,20 +8,17 @@ import numpy as np
 from utils.image_processing import preprocess, morpho_open, detect_grid_cells
 
 
-# ── Tuneable parameters ────────────────────────────────────────────────────────
-# These are calibrated on the reference form; adjust if the form layout changes.
-
 # Relative position of the Student-ID grid inside the first page image
-# (x_ratio, y_ratio, w_ratio, h_ratio)  — fractions of page width / height
+# (x_ratio, y_ratio, w_ratio, h_ratio) — fractions of page width / height
 STUDENT_ID_REGION = (0.05, 0.30, 0.50, 0.18)   # 5-digit ID: 5 cols × 10 rows
-STUDENT_ID_DIGITS = 5                            # number of digit columns
+STUDENT_ID_DIGITS = 5
 STUDENT_ID_ROWS = 10                             # 0-9
 
-GROUP_REGION = (0.60, 0.30, 0.35, 0.18)         # group grid
-GROUP_COLS = 4                                   # e.g. G01B  → 4 columns
+GROUP_REGION = (0.60, 0.30, 0.35, 0.18)
+GROUP_COLS = 4                                   # e.g. G01B → 4 columns
 GROUP_ROWS = 10
 
-SIGNATURE_REGION = (0.05, 0.70, 0.90, 0.25)     # signature zone
+SIGNATURE_REGION = (0.05, 0.70, 0.90, 0.25)
 
 
 def _locate_grid(page_gray, rel_region):
@@ -40,10 +32,7 @@ def _locate_grid(page_gray, rel_region):
 
 
 def read_bubble_column(grid_bool, col):
-    """
-    Read a single column of bubbles and return the filled row index (0-9).
-    Returns -1 if no bubble or more than one bubble is filled.
-    """
+    """Return filled row index (0-9) for a column, or -1 if ambiguous."""
     filled = [r for r in range(grid_bool.shape[0]) if grid_bool[r, col]]
     if len(filled) == 1:
         return filled[0]
@@ -51,13 +40,7 @@ def read_bubble_column(grid_bool, col):
 
 
 def extract_student_id(page_gray):
-    """
-    Extract the numeric student ID from the bubble grid on page 1.
-
-    Returns
-    -------
-    student_id : str  (e.g. "48271") or empty string on failure.
-    """
+    """Extract the numeric student ID from the bubble grid. Returns e.g. '48271' or '' on failure."""
     binary = preprocess(page_gray)
     x, y, w, h = _locate_grid(page_gray, STUDENT_ID_REGION)
     grid = detect_grid_cells(binary, STUDENT_ID_ROWS, STUDENT_ID_DIGITS,
@@ -70,13 +53,7 @@ def extract_student_id(page_gray):
 
 
 def extract_group(page_gray):
-    """
-    Extract the group code from its bubble grid.
-
-    Returns
-    -------
-    group : str  (e.g. "G02B") or empty string on failure.
-    """
+    """Extract the group code from its bubble grid. Returns e.g. 'G02B' or '' on failure."""
     binary = preprocess(page_gray)
     x, y, w, h = _locate_grid(page_gray, GROUP_REGION)
     grid = detect_grid_cells(binary, GROUP_ROWS, GROUP_COLS,
@@ -89,8 +66,6 @@ def extract_group(page_gray):
 
 
 def extract_signature_region(page_gray):
-    """
-    Crop and return the signature sub-image from page 1.
-    """
+    """Crop and return the signature sub-image from page 1."""
     x, y, w, h = _locate_grid(page_gray, SIGNATURE_REGION)
     return page_gray[y:y+h, x:x+w]
