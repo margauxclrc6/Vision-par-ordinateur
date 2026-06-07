@@ -1,15 +1,4 @@
-"""
-Training script for the handwritten digit CNN.
-
-Trains on EMNIST (digits split) then optionally fine-tunes on custom data.
-Saves the model to models/digit_cnn.pth.
-
-Usage:
-    python train_digit_cnn.py [--epochs 10] [--custom-data path/to/custom]
-
-The trained model is used by utils/ocr_reader.py for handwritten digit
-recognition on exam answer sheets.
-"""
+"""Train the handwritten digit CNN on EMNIST, with optional fine-tuning on custom data."""
 
 import argparse
 import os
@@ -24,14 +13,12 @@ from torchvision import datasets, transforms
 from utils.ocr_reader import _DigitCNN
 
 
-# ── Hyperparameters ────────────────────────────────────────────────────────────
-BATCH_SIZE   = 128
-LR           = 1e-3
-EPOCHS_EMNIST = 5
+BATCH_SIZE      = 128
+LR              = 1e-3
+EPOCHS_EMNIST   = 5
 EPOCHS_FINETUNE = 3
-MODEL_PATH   = Path("models/digit_cnn.pth")
+MODEL_PATH      = Path("models/digit_cnn.pth")
 
-# ── Data augmentation ──────────────────────────────────────────────────────────
 train_transform = transforms.Compose([
     transforms.RandomRotation(10),
     transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
@@ -90,7 +77,6 @@ def main():
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=LR)
 
-    # ── EMNIST pre-training ────────────────────────────────────────────────
     print("Loading EMNIST digits …")
     emnist_train = datasets.EMNIST(root="data", split="digits", train=True,
                                    download=True, transform=train_transform)
@@ -108,7 +94,6 @@ def main():
               f"train_loss={tr_loss:.4f} train_acc={tr_acc:.3f}  "
               f"val_loss={va_loss:.4f} val_acc={va_acc:.3f}")
 
-    # ── Optional fine-tuning on custom data ───────────────────────────────
     if args.custom_data:
         print(f"\nFine-tuning on {args.custom_data} …")
         custom_ds = datasets.ImageFolder(args.custom_data,
@@ -125,7 +110,6 @@ def main():
             print(f"  FT Epoch {epoch}/{EPOCHS_FINETUNE}  "
                   f"train_acc={tr_acc:.3f}  val_acc={va_acc:.3f}")
 
-    # ── Save ───────────────────────────────────────────────────────────────
     torch.save(model.state_dict(), MODEL_PATH)
     print(f"\nModel saved → {MODEL_PATH}")
 

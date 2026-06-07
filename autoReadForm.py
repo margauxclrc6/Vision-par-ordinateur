@@ -1,15 +1,4 @@
-"""
-PROGRAMME 2 – Lecture automatique des formulaires
-
-Entry point:
-    autoReadForm(exam_pdf_dir, signatures_dir, results_dir)
-
-For each PDF in exam_pdf_dir:
-    autoReadFormID(pdf_path, signatures_dir, results_dir)
-        → EXAM_FORMXX_abcd.xlsx  with two sheets:
-             PAGE-01  (identification and administrative data)
-             EXAM     (answers per question)
-"""
+"""Lecture automatique des formulaires d'examen — Programme 2."""
 
 import re
 from pathlib import Path
@@ -34,16 +23,8 @@ from utils.form_layout import (PAGE1_FIELDS, crop_field,
                                 EXAM_UNITE_COL, N_CHOICES, CHOICE_LABELS)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  PAGE 1 parsing
-# ──────────────────────────────────────────────────────────────────────────────
-
 def _parse_page1(page_gray, signatures_dir):
-    """
-    Extract all PAGE-01 fields from the first page of the PDF.
-
-    Returns a dict matching the row labels of the PAGE-01 sheet.
-    """
+    """Extract all PAGE-01 fields and return them as a dict."""
     page_gray, _ = deskew(page_gray)
     h, w = page_gray.shape
 
@@ -57,59 +38,42 @@ def _parse_page1(page_gray, signatures_dir):
 
     data = {}
 
-    # ── Printed info (rows 1-4) ────────────────────────────────────────────
     data["Module"]    = read_printed_field(crop("module"))
     data["Professor"] = read_printed_field(crop("professor"))
     data["Date"]      = read_printed_date(crop("date"))
     data["Code"]      = read_printed_field(crop("code"))
 
-    # ── Checkboxes (rows 5-9) ──────────────────────────────────────────────
     data["Notes de cours"]      = checkbox_val("notes_cours")
     data["Notes manuscrites"]   = checkbox_val("notes_manuscrites")
     data["Ordinateur portable"] = checkbox_val("ordinateur")
     data["Calculatrice"]        = checkbox_val("calculatrice")
     data["Feuilles brouillon"]  = checkbox_val("feuilles_brouillon")
 
-    # ── Printed scores (rows 10-11) ────────────────────────────────────────
     data["Note maximale"]    = read_printed_field(crop("note_maximale"))
     data["Note pour valider"] = read_printed_field(crop("note_valider"))
 
-    # ── Handwritten name (rows 13-14) ──────────────────────────────────────
     data["Prénom"] = read_handwritten_text(crop("prenom"))
     data["Nom"]    = read_handwritten_text(crop("nom"))
 
-    # ── Signature (row 15) ─────────────────────────────────────────────────
     sig_gray = crop("signature")
     student_id_sig, sig_score = match_signature(sig_gray, signatures_dir)
     data["Validation signature"] = 1 if student_id_sig else 0
     data["_signature_id"] = student_id_sig or ""
     data["_signature_score"] = sig_score
 
-    # ── Bubble grids (rows 16-17) ──────────────────────────────────────────
     data["Group"]      = extract_group(page_gray)
     data["STUDENT ID"] = extract_student_id(page_gray)
 
     return data
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  Exam pages parsing
-# ──────────────────────────────────────────────────────────────────────────────
-
 def _detect_questions(page_gray):
-    """
-    Detect question rows on an exam page using horizontal line detection.
-
-    Returns a list of (question_number, y_center_ratio) tuples.
-    """
+    """Return a list of (question_number, y_center_ratio) for each row on an exam page."""
     h, w = page_gray.shape
     rows = []
 
-    # Simple approach: scan rows in the answer area for horizontal separators
     y_start = int(EXAM_ROW_START_Y * h)
     row_h_px = int(EXAM_ROW_H * h)
-
-    # Estimate number of questions by available vertical space
     n_rows = int((h - y_start) / row_h_px)
 
     for i in range(n_rows):
@@ -120,14 +84,10 @@ def _detect_questions(page_gray):
 
 
 def _parse_exam_pages(pages_gray):
-    """
-    Parse exam answer pages (pages 5 onward, 0-indexed page 4+).
-
-    Returns a list of dicts, one per question row.
-    """
+    """Parse answer pages (page 5 onward) and return a list of row dicts."""
     exam_rows = []
 
-    for page in pages_gray[4:]:  # pages 5 → end  (0-indexed: 4→end)
+    for page in pages_gray[4:]:
         page_gray, _ = deskew(page)
         h, w = page_gray.shape
 
@@ -136,7 +96,6 @@ def _parse_exam_pages(pages_gray):
         for q_num, y_ratio in questions:
             row = {"QUESTION": q_num}
 
-            # ── Multiple-choice checkboxes ─────────────────────────────────
             for ci, label in enumerate(CHOICE_LABELS):
                 x_ratio = EXAM_CHOICES_START_X + ci * EXAM_CHOICE_COL_W
                 x = int(x_ratio * w)
@@ -147,7 +106,6 @@ def _parse_exam_pages(pages_gray):
                 checked, _ = is_checked(cell)
                 row[f"CHOIX {label}"] = 1 if checked else ""
 
-            # ── Handwritten numerical answer ───────────────────────────────
             def _read_col(rel_col):
                 cx = int(rel_col[0] * w)
                 cy = int((y_ratio - EXAM_ROW_H / 2) * h)
@@ -165,15 +123,10 @@ def _parse_exam_pages(pages_gray):
     return exam_rows
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  Excel builder
-# ──────────────────────────────────────────────────────────────────────────────
-
 def _build_xlsx(page1_data, exam_rows, crypto_valid, xlsx_path):
-    """Create the output XLSX with PAGE-01 and EXAM sheets."""
+    """Write the output XLSX with PAGE-01 and EXAM sheets."""
     wb = openpyxl.Workbook()
 
-    # ── PAGE-01 sheet ──────────────────────────────────────────────────────
     ws1 = wb.active
     ws1.title = "PAGE-01"
 
@@ -201,7 +154,6 @@ def _build_xlsx(page1_data, exam_rows, crypto_valid, xlsx_path):
     for label, value in page1_rows:
         ws1.append([label, value])
 
-    # ── EXAM sheet ─────────────────────────────────────────────────────────
     ws2 = wb.create_sheet(title="EXAM")
 
     if exam_rows:
@@ -213,20 +165,8 @@ def _build_xlsx(page1_data, exam_rows, crypto_valid, xlsx_path):
     wb.save(str(xlsx_path))
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  Public API
-# ──────────────────────────────────────────────────────────────────────────────
-
 def autoReadFormID(pdf_path, signatures_dir, results_dir):
-    """
-    Read one exam PDF and write the corresponding XLSX.
-
-    Parameters
-    ----------
-    pdf_path       : str | Path
-    signatures_dir : str | Path
-    results_dir    : str | Path
-    """
+    """Read one exam PDF and write the corresponding XLSX."""
     pdf_path = Path(pdf_path)
     signatures_dir = Path(signatures_dir)
     results_dir = Path(results_dir)
@@ -236,25 +176,20 @@ def autoReadFormID(pdf_path, signatures_dir, results_dir):
 
     print(f"  Processing {pdf_path.name} …")
 
-    # ── Convert PDF to images ──────────────────────────────────────────────
     pages = pdf_to_images(pdf_path)
 
     if not pages:
         print(f"  [ERROR] No pages found in {pdf_path.name}")
         return
 
-    # ── Parse page 1 ──────────────────────────────────────────────────────
     page1_data = _parse_page1(pages[0], signatures_dir)
 
-    # ── Validate cryptograms ───────────────────────────────────────────────
     crypto_valid, crypto_scores = validate_cryptograms(pages)
     page1_data["Validation cryptogramme"] = 1 if crypto_valid else 0
     print(f"    cryptogram valid={crypto_valid}  scores={[f'{s:.2f}' for s in crypto_scores]}")
 
-    # ── Parse exam answer pages ────────────────────────────────────────────
     exam_rows = _parse_exam_pages(pages)
 
-    # ── Write XLSX ─────────────────────────────────────────────────────────
     _build_xlsx(page1_data, exam_rows, crypto_valid, xlsx_path)
 
     print(f"    → {xlsx_path.name}  "
@@ -265,15 +200,7 @@ def autoReadFormID(pdf_path, signatures_dir, results_dir):
 
 
 def autoReadForm(exam_pdf_dir, signatures_dir, results_dir):
-    """
-    Process all PDFs in exam_pdf_dir.
-
-    Parameters
-    ----------
-    exam_pdf_dir   : str | Path
-    signatures_dir : str | Path
-    results_dir    : str | Path
-    """
+    """Process all PDFs in exam_pdf_dir."""
     exam_pdf_dir = Path(exam_pdf_dir)
     signatures_dir = Path(signatures_dir)
     results_dir = Path(results_dir)
