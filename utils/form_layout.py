@@ -8,40 +8,41 @@ so they stay resolution-independent. Calibrate values against the actual form if
 
 PAGE1_FIELDS = {
     # row 1 – Module
-    "module":     (0.30, 0.04, 0.40, 0.03),
+    # row 1 – Module (printed, top header band)
+    "module":     (0.08, 0.055, 0.18, 0.025),
     # row 2 – Professor
-    "professor":  (0.30, 0.07, 0.40, 0.03),
+    "professor":  (0.35, 0.055, 0.18, 0.025),
     # row 3 – Date
-    "date":       (0.30, 0.10, 0.25, 0.03),
+    "date":       (0.57, 0.055, 0.22, 0.025),
     # row 4 – Code
-    "code":       (0.30, 0.13, 0.25, 0.03),
-    # row 5 – Notes de cours (checkbox)
-    "notes_cours":       (0.05, 0.17, 0.10, 0.03),
-    # row 6 – Notes manuscrites (checkbox)
-    "notes_manuscrites": (0.05, 0.20, 0.10, 0.03),
-    # row 7 – Ordinateur portable (checkbox)
-    "ordinateur":        (0.05, 0.23, 0.10, 0.03),
-    # row 8 – Calculatrice (checkbox)
-    "calculatrice":      (0.05, 0.26, 0.10, 0.03),
-    # row 9 – Feuilles brouillon (checkbox + count)
-    "feuilles_brouillon":     (0.05, 0.29, 0.10, 0.03),
-    "feuilles_brouillon_nb":  (0.20, 0.29, 0.05, 0.03),
+    "code":       (0.78, 0.055, 0.20, 0.025),
+    # row 5 – Notes de cours YES checkbox
+    "notes_cours":       (0.05, 0.615, 0.07, 0.025),
+    # row 6 – Notes manuscrites YES checkbox
+    "notes_manuscrites": (0.20, 0.615, 0.07, 0.025),
+    # row 7 – Ordinateur portable YES checkbox
+    "ordinateur":        (0.36, 0.615, 0.07, 0.025),
+    # row 8 – Calculatrice YES checkbox
+    "calculatrice":      (0.52, 0.615, 0.07, 0.025),
+    # row 9 – Feuilles brouillon YES checkbox
+    "feuilles_brouillon":     (0.68, 0.615, 0.07, 0.025),
+    "feuilles_brouillon_nb":  (0.20, 0.645, 0.10, 0.025),
     # row 10 – Note maximale
-    "note_maximale": (0.30, 0.32, 0.15, 0.03),
+    "note_maximale": (0.55, 0.71, 0.15, 0.04),
     # row 11 – Note pour valider
-    "note_valider":  (0.30, 0.35, 0.15, 0.03),
-    # row 13 – Prénom (handwritten)
-    "prenom": (0.30, 0.55, 0.40, 0.04),
-    # row 14 – Nom (handwritten)
-    "nom":    (0.30, 0.60, 0.40, 0.04),
-    # row 15 – Signature zone (for matching)
-    "signature": (0.05, 0.70, 0.90, 0.20),
+    "note_valider":  (0.55, 0.76, 0.15, 0.04),
+    # row 13 – Prénom (handwritten boxes)
+    "prenom": (0.03, 0.155, 0.32, 0.045),
+    # row 14 – Nom (handwritten boxes)
+    "nom":    (0.03, 0.215, 0.32, 0.045),
+    # row 15 – Signature zone
+    "signature": (0.03, 0.255, 0.30, 0.245),
     # row 16 – Group (from bubble grid)
-    "group":     (0.60, 0.30, 0.35, 0.18),
+    "group":     (0.37, 0.19, 0.24, 0.36),
     # row 17 – StudentID (from bubble grid)
-    "student_id": (0.05, 0.30, 0.50, 0.18),
-    # row 18 – Cryptogram (bottom of page)
-    "cryptogram": (0.40, 0.93, 0.20, 0.06),
+    "student_id": (0.62, 0.19, 0.35, 0.36),
+    # row 18 – Cryptogram (bottom left)
+    "cryptogram": (0.08, 0.935, 0.10, 0.05),
 }
 
 # Exam page fields

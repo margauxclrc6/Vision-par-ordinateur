@@ -10,15 +10,15 @@ from utils.image_processing import preprocess, morpho_open, detect_grid_cells
 
 # Relative position of the Student-ID grid inside the first page image
 # (x_ratio, y_ratio, w_ratio, h_ratio) — fractions of page width / height
-STUDENT_ID_REGION = (0.05, 0.30, 0.50, 0.18)   # 5-digit ID: 5 cols × 10 rows
+STUDENT_ID_REGION = (0.62, 0.19, 0.35, 0.36)   # 5-digit ID: 5 cols × 10 rows
 STUDENT_ID_DIGITS = 5
 STUDENT_ID_ROWS = 10                             # 0-9
 
-GROUP_REGION = (0.60, 0.30, 0.35, 0.18)
-GROUP_COLS = 4                                   # e.g. G01B → 4 columns
+GROUP_REGION = (0.37, 0.19, 0.24, 0.36)
+GROUP_COLS = 3                                   # col1=digit, col2=letter (e.g. 04E)
 GROUP_ROWS = 10
 
-SIGNATURE_REGION = (0.05, 0.70, 0.90, 0.25)
+SIGNATURE_REGION = (0.03, 0.24, 0.30, 0.26)
 
 
 def _locate_grid(page_gray, rel_region):
