@@ -152,12 +152,20 @@ def detect_grid_cells(binary, n_rows, n_cols, region=None):
     row_rank = np.empty(n_r, dtype=int)
     row_rank[row_sorted] = np.arange(n_r)
 
-    FILL_THRESH = 0.08
+    fill_scores = np.zeros((n_rows, n_cols), dtype=float)
     for i, (cx, cy, fill) in enumerate(candidates):
         c = int(col_rank[col_lbls[i, 0]])
         r = int(row_rank[row_lbls[i, 0]])
-        if 0 <= r < n_rows and 0 <= c < n_cols and fill > FILL_THRESH:
-            grid[r, c] = True
+        if 0 <= r < n_rows and 0 <= c < n_cols:
+            fill_scores[r, c] = max(fill_scores[r, c], fill)
+
+    # Mark filled: per-column max must be at least 2× the column median
+    for c in range(n_cols):
+        col = fill_scores[:, c]
+        col_max = col.max()
+        col_med = np.median(col)
+        thresh = max(0.04, col_med * 2.0)
+        grid[:, c] = (col == col_max) & (col_max > thresh)
 
     return grid
 
