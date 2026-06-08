@@ -40,7 +40,7 @@ PAGE1_FIELDS = {
     # row 16 – Group (from bubble grid)
     "group":     (0.37, 0.19, 0.24, 0.36),
     # row 17 – StudentID (from bubble grid)
-    "student_id": (0.62, 0.19, 0.35, 0.36),
+    "student_id": (0.75, 0.19, 0.22, 0.36),
     # row 18 – Cryptogram (bottom left)
     "cryptogram": (0.08, 0.935, 0.10, 0.05),
 }
