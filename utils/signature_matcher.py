@@ -11,7 +11,7 @@ from utils.image_processing import normalize_signature, image_similarity
 
 
 SIG_TARGET_SIZE = (128, 64)    # (width, height) of normalized signature
-MATCH_THRESHOLD = 0.45         # minimum NCC to accept a match
+MATCH_THRESHOLD = 0.15         # minimum NCC to accept a match
 SUPPORTED_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif"}
 
 

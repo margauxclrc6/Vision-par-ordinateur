@@ -5,8 +5,17 @@ import numpy as np
 
 
 def load_image(path):
-    """Load image as grayscale and color."""
-    img_color = cv2.imread(str(path))
+    """Load image as grayscale and color. Handles unusual extensions via numpy."""
+    import numpy as np
+    path = str(path)
+    img_color = cv2.imread(path)
+    if img_color is None:
+        # Fallback for files cv2 fails to open directly (e.g. uppercase extensions)
+        try:
+            raw = np.fromfile(path, dtype=np.uint8)
+            img_color = cv2.imdecode(raw, cv2.IMREAD_COLOR)
+        except Exception:
+            img_color = None
     if img_color is None:
         raise FileNotFoundError(f"Cannot load image: {path}")
     img_gray = cv2.cvtColor(img_color, cv2.COLOR_BGR2GRAY)
