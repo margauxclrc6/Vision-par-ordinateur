@@ -16,23 +16,39 @@ SUPPORTED_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif"}
 
 
 def _load_database(signatures_dir):
-    """Load and normalize all reference signatures, returns {student_id: image}."""
+    """
+    Load reference signatures recursively. Supports nested structure:
+      signatures_dir/
+        <studentID>/          ← folder named by student ID (numeric)
+          <studentID>_000.png
+          ...
+        <scan_folder>/        ← any named folder
+          <studentID>/
+            ...
+    Returns {student_id: [normalized_img, ...]}
+    """
     db = {}
-    for f in Path(signatures_dir).iterdir():
-        if f.suffix.lower() not in SUPPORTED_EXT:
-            continue
-        student_id = f.stem
-        img = cv2.imread(str(f), cv2.IMREAD_GRAYSCALE)
-        if img is None:
-            continue
-        db[student_id] = normalize_signature(img, SIG_TARGET_SIZE)
+
+    def _walk(folder, current_id):
+        for item in Path(folder).iterdir():
+            if item.is_dir():
+                sid = item.name if item.name.isdigit() else current_id
+                _walk(item, sid)
+            elif item.suffix.lower() in SUPPORTED_EXT and current_id:
+                img = cv2.imread(str(item), cv2.IMREAD_GRAYSCALE)
+                if img is not None:
+                    norm = normalize_signature(img, SIG_TARGET_SIZE)
+                    db.setdefault(current_id, []).append(norm)
+
+    _walk(signatures_dir, None)
     return db
 
 
 def match_signature(sig_gray, signatures_dir):
     """
     Identify a signature against the class database.
-    Returns (best_id, best_score) — best_id is None if no match exceeds the threshold.
+    Returns (best_id, best_score) — best_id is None if no match exceeds threshold.
+    Compares the query against all samples per student and takes the max score.
     """
     db = _load_database(signatures_dir)
     if not db:
@@ -43,8 +59,8 @@ def match_signature(sig_gray, signatures_dir):
     best_id = None
     best_score = -1.0
 
-    for student_id, ref in db.items():
-        score = image_similarity(query, ref)
+    for student_id, refs in db.items():
+        score = max(image_similarity(query, ref) for ref in refs)
         if score > best_score:
             best_score = score
             best_id = student_id
