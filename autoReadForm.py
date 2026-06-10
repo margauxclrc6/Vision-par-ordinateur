@@ -1,5 +1,6 @@
 """Lecture automatique des formulaires d'examen — Programme 2."""
 
+import os
 import re
 from pathlib import Path
 
@@ -8,57 +9,89 @@ import numpy as np
 import openpyxl
 
 from utils.pdf_utils import pdf_to_images
-from utils.image_processing import deskew
+from utils.image_processing import deskew, preprocess
 from utils.grid_reader import (extract_student_id, extract_group,
                                 extract_signature_region)
 from utils.signature_matcher import match_signature
 from utils.cryptogram import validate_cryptograms, extract_cryptogram
-from utils.ocr_reader import (read_printed_field, read_printed_date,
-                               read_handwritten_text, read_handwritten_number)
+from utils.ocr_reader import read_printed_field, read_printed_date
 from utils.checkbox_reader import is_checked
-from utils.form_layout import (PAGE1_FIELDS, crop_field,
-                                EXAM_CHOICES_START_X, EXAM_CHOICE_COL_W,
-                                EXAM_ROW_START_Y, EXAM_ROW_H,
-                                EXAM_MANTISSE_COL, EXAM_EXPOSANT_COL,
-                                EXAM_UNITE_COL, N_CHOICES, CHOICE_LABELS)
+from utils.form_layout import PAGE1_FIELDS, crop_field
+from utils.exam_page_parser import parse_exam_page
+
+
+# Choices available per question (adapt to actual form)
+CHOICE_LABELS = ['A', 'B', 'C', 'D']
+
+
+def _read_field_ocr(page_gray, rel_coords, mode="printed"):
+    """Crop a field and OCR it with better preprocessing."""
+    crop = crop_field(page_gray, rel_coords)
+    if crop.size == 0:
+        return ""
+
+    # Upscale for better accuracy
+    h, w = crop.shape
+    scale = max(1, 80 // max(h, 1))
+    if scale > 1:
+        crop = cv2.resize(crop, (w * scale, h * scale), interpolation=cv2.INTER_CUBIC)
+
+    try:
+        import pytesseract
+    except ImportError:
+        return ""
+
+    # Try both polarities and return best
+    _, bin_normal = cv2.threshold(crop, 0, 255,
+                                   cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    _, bin_inv = cv2.threshold(crop, 0, 255,
+                                cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    if mode == "date":
+        cfg = "--psm 7 -c tessedit_char_whitelist=0123456789/"
+        t1 = pytesseract.image_to_string(bin_normal, config=cfg).strip()
+        return t1 if t1 else pytesseract.image_to_string(bin_inv, config=cfg).strip()
+
+    cfg = "--psm 7"
+    t1 = pytesseract.image_to_string(bin_normal, config=cfg).strip()
+    t2 = pytesseract.image_to_string(bin_inv, config=cfg).strip()
+    # prefer the result with more alphanumeric characters
+    return t1 if len(re.sub(r'\W', '', t1)) >= len(re.sub(r'\W', '', t2)) else t2
+
+
+def _checkbox_val(page_gray, rel_coords):
+    """Check whether the checkbox at rel_coords is marked."""
+    cell = crop_field(page_gray, rel_coords)
+    if cell.size == 0:
+        return 0
+    checked, ratio = is_checked(cell)
+    return 1 if checked else 0
 
 
 def _parse_page1(page_gray, signatures_dir):
     """Extract all PAGE-01 fields and return them as a dict."""
     page_gray, _ = deskew(page_gray)
-    h, w = page_gray.shape
-
-    def crop(key):
-        return crop_field(page_gray, PAGE1_FIELDS[key])
-
-    def checkbox_val(key):
-        cell = crop(key)
-        checked, _ = is_checked(cell)
-        return 1 if checked else 0
 
     data = {}
 
-    data["Module"]    = read_printed_field(crop("module"))
-    data["Professor"] = read_printed_field(crop("professor"))
-    data["Date"]      = read_printed_date(crop("date"))
-    data["Code"]      = read_printed_field(crop("code"))
+    data["Module"]    = _read_field_ocr(page_gray, PAGE1_FIELDS["module"])
+    data["Professor"] = _read_field_ocr(page_gray, PAGE1_FIELDS["professor"])
+    data["Date"]      = _read_field_ocr(page_gray, PAGE1_FIELDS["date"], mode="date")
+    data["Code"]      = _read_field_ocr(page_gray, PAGE1_FIELDS["code"])
 
-    data["Notes de cours"]      = checkbox_val("notes_cours")
-    data["Notes manuscrites"]   = checkbox_val("notes_manuscrites")
-    data["Ordinateur portable"] = checkbox_val("ordinateur")
-    data["Calculatrice"]        = checkbox_val("calculatrice")
-    data["Feuilles brouillon"]  = checkbox_val("feuilles_brouillon")
+    data["Notes de cours"]      = _checkbox_val(page_gray, PAGE1_FIELDS["notes_cours"])
+    data["Notes manuscrites"]   = _checkbox_val(page_gray, PAGE1_FIELDS["notes_manuscrites"])
+    data["Ordinateur portable"] = _checkbox_val(page_gray, PAGE1_FIELDS["ordinateur"])
+    data["Calculatrice"]        = _checkbox_val(page_gray, PAGE1_FIELDS["calculatrice"])
+    data["Feuilles brouillon"]  = _checkbox_val(page_gray, PAGE1_FIELDS["feuilles_brouillon"])
 
-    data["Note maximale"]    = read_printed_field(crop("note_maximale"))
-    data["Note pour valider"] = read_printed_field(crop("note_valider"))
+    data["Note maximale"]     = _read_field_ocr(page_gray, PAGE1_FIELDS["note_maximale"])
+    data["Note pour valider"] = _read_field_ocr(page_gray, PAGE1_FIELDS["note_valider"])
 
-    data["Prénom"] = read_handwritten_text(crop("prenom"))
-    data["Nom"]    = read_handwritten_text(crop("nom"))
-
-    sig_gray = crop("signature")
+    sig_gray = extract_signature_region(page_gray)
     student_id_sig, sig_score = match_signature(sig_gray, signatures_dir)
     data["Validation signature"] = 1 if student_id_sig else 0
-    data["_signature_id"] = student_id_sig or ""
+    data["_signature_id"]    = student_id_sig or ""
     data["_signature_score"] = sig_score
 
     data["Group"]      = extract_group(page_gray)
@@ -67,58 +100,23 @@ def _parse_page1(page_gray, signatures_dir):
     return data
 
 
-def _detect_questions(page_gray):
-    """Return a list of (question_number, y_center_ratio) for each row on an exam page."""
-    h, w = page_gray.shape
-    rows = []
-
-    y_start = int(EXAM_ROW_START_Y * h)
-    row_h_px = int(EXAM_ROW_H * h)
-    n_rows = int((h - y_start) / row_h_px)
-
-    for i in range(n_rows):
-        y_center = (y_start + i * row_h_px + row_h_px // 2) / h
-        rows.append((i + 1, y_center))
-
-    return rows
-
-
-def _parse_exam_pages(pages_gray):
-    """Parse answer pages (page 5 onward) and return a list of row dicts."""
+def _parse_exam_pages(pages_gray, debug_dir=None):
+    """
+    Parse exam answer pages (pages 3-7, index 2 onward, skipping page 2 which is blank).
+    Returns a list of question-row dicts with sequential question numbers.
+    """
     exam_rows = []
+    q_offset = 0
 
-    for page in pages_gray[4:]:
+    # page index 0 = identity page, index 1 = blank/cryptogram only
+    for page_idx, page in enumerate(pages_gray[2:], start=2):
         page_gray, _ = deskew(page)
-        h, w = page_gray.shape
-
-        questions = _detect_questions(page_gray)
-
-        for q_num, y_ratio in questions:
-            row = {"QUESTION": q_num}
-
-            for ci, label in enumerate(CHOICE_LABELS):
-                x_ratio = EXAM_CHOICES_START_X + ci * EXAM_CHOICE_COL_W
-                x = int(x_ratio * w)
-                y = int((y_ratio - EXAM_ROW_H / 2) * h)
-                cell_w = int(EXAM_CHOICE_COL_W * w)
-                cell_h = int(EXAM_ROW_H * h)
-                cell = page_gray[max(0, y):y+cell_h, x:x+cell_w]
-                checked, _ = is_checked(cell)
-                row[f"CHOIX {label}"] = 1 if checked else ""
-
-            def _read_col(rel_col):
-                cx = int(rel_col[0] * w)
-                cy = int((y_ratio - EXAM_ROW_H / 2) * h)
-                cw = int(rel_col[2] * w)
-                ch = int(rel_col[3] * h / len(questions) if questions else EXAM_ROW_H * h)
-                cell = page_gray[max(0, cy):cy+cell_h, cx:cx+cw]
-                return read_handwritten_number(cell)
-
-            row["MANTISSE"] = _read_col(EXAM_MANTISSE_COL)
-            row["EXPOSANT"] = _read_col(EXAM_EXPOSANT_COL)
-            row["UNITE"]    = _read_col(EXAM_UNITE_COL)
-
+        rows = parse_exam_page(page_gray, CHOICE_LABELS,
+                               page_idx=page_idx, debug_dir=debug_dir)
+        for row in rows:
+            row["QUESTION"] = q_offset + row["QUESTION"]
             exam_rows.append(row)
+        q_offset += len(rows)
 
     return exam_rows
 
@@ -129,33 +127,30 @@ def _build_xlsx(page1_data, exam_rows, crypto_valid, xlsx_path):
 
     ws1 = wb.active
     ws1.title = "PAGE-01"
-
-    page1_rows = [
-        ("Module",              page1_data.get("Module", "")),
-        ("Professor",           page1_data.get("Professor", "")),
-        ("Date",                page1_data.get("Date", "")),
-        ("Code",                page1_data.get("Code", "")),
-        ("Notes de cours",      page1_data.get("Notes de cours", "")),
-        ("Notes manuscrites",   page1_data.get("Notes manuscrites", "")),
-        ("Ordinateur portable", page1_data.get("Ordinateur portable", "")),
-        ("Calculatrice",        page1_data.get("Calculatrice", "")),
-        ("Feuilles brouillon",  page1_data.get("Feuilles brouillon", "")),
-        ("Note maximale",       page1_data.get("Note maximale", "")),
-        ("Note pour valider",   page1_data.get("Note pour valider", "")),
-        ("",                    ""),
-        ("Prénom",              page1_data.get("Prénom", "")),
-        ("Nom",                 page1_data.get("Nom", "")),
-        ("Validation signature",page1_data.get("Validation signature", "")),
-        ("Group",               page1_data.get("Group", "")),
-        ("STUDENT ID",          page1_data.get("STUDENT ID", "")),
-        ("Validation cryptogramme", 1 if crypto_valid else 0),
-    ]
     ws1.append(["Field", "Value"])
-    for label, value in page1_rows:
-        ws1.append([label, value])
+    for label, key in [
+        ("Module",               "Module"),
+        ("Professor",            "Professor"),
+        ("Date",                 "Date"),
+        ("Code",                 "Code"),
+        ("Notes de cours",       "Notes de cours"),
+        ("Notes manuscrites",    "Notes manuscrites"),
+        ("Ordinateur portable",  "Ordinateur portable"),
+        ("Calculatrice",         "Calculatrice"),
+        ("Feuilles brouillon",   "Feuilles brouillon"),
+        ("Note maximale",        "Note maximale"),
+        ("Note pour valider",    "Note pour valider"),
+        ("",                     ""),
+        ("Prénom",               "Prénom"),
+        ("Nom",                  "Nom"),
+        ("Validation signature", "Validation signature"),
+        ("Group",                "Group"),
+        ("STUDENT ID",           "STUDENT ID"),
+        ("Validation cryptogramme", "Validation cryptogramme"),
+    ]:
+        ws1.append([label, page1_data.get(key, "")])
 
     ws2 = wb.create_sheet(title="EXAM")
-
     if exam_rows:
         headers = list(exam_rows[0].keys())
         ws2.append(headers)
@@ -165,7 +160,7 @@ def _build_xlsx(page1_data, exam_rows, crypto_valid, xlsx_path):
     wb.save(str(xlsx_path))
 
 
-def autoReadFormID(pdf_path, signatures_dir, results_dir):
+def autoReadFormID(pdf_path, signatures_dir, results_dir, debug=False):
     """Read one exam PDF and write the corresponding XLSX."""
     pdf_path = Path(pdf_path)
     signatures_dir = Path(signatures_dir)
@@ -173,11 +168,11 @@ def autoReadFormID(pdf_path, signatures_dir, results_dir):
     results_dir.mkdir(parents=True, exist_ok=True)
 
     xlsx_path = results_dir / (pdf_path.stem + ".xlsx")
+    debug_dir = str(results_dir / "debug") if debug else None
 
     print(f"  Processing {pdf_path.name} …")
 
     pages = pdf_to_images(pdf_path)
-
     if not pages:
         print(f"  [ERROR] No pages found in {pdf_path.name}")
         return
@@ -188,18 +183,19 @@ def autoReadFormID(pdf_path, signatures_dir, results_dir):
     page1_data["Validation cryptogramme"] = 1 if crypto_valid else 0
     print(f"    cryptogram valid={crypto_valid}  scores={[f'{s:.2f}' for s in crypto_scores]}")
 
-    exam_rows = _parse_exam_pages(pages)
+    exam_rows = _parse_exam_pages(pages, debug_dir=debug_dir)
 
     _build_xlsx(page1_data, exam_rows, crypto_valid, xlsx_path)
 
     print(f"    → {xlsx_path.name}  "
-          f"(studentID={page1_data.get('STUDENT ID','')}  "
-          f"sig={page1_data.get('_signature_id','')})")
+          f"(studentID={page1_data.get('STUDENT ID', '')}  "
+          f"sig={page1_data.get('_signature_id', '')}  "
+          f"questions={len(exam_rows)})")
 
     return str(xlsx_path)
 
 
-def autoReadForm(exam_pdf_dir, signatures_dir, results_dir):
+def autoReadForm(exam_pdf_dir, signatures_dir, results_dir, debug=False):
     """Process all PDFs in exam_pdf_dir."""
     exam_pdf_dir = Path(exam_pdf_dir)
     signatures_dir = Path(signatures_dir)
@@ -207,17 +203,17 @@ def autoReadForm(exam_pdf_dir, signatures_dir, results_dir):
     results_dir.mkdir(parents=True, exist_ok=True)
 
     pdfs = sorted(exam_pdf_dir.glob("*.pdf"))
-
     if not pdfs:
         print(f"[WARNING] No PDF files found in {exam_pdf_dir}")
         return
 
     print(f"[Programme 2] Found {len(pdfs)} PDF(s) in {exam_pdf_dir}")
-
     for pdf in pdfs:
         try:
-            autoReadFormID(pdf, signatures_dir, results_dir)
+            autoReadFormID(pdf, signatures_dir, results_dir, debug=debug)
         except Exception as exc:
+            import traceback
             print(f"  [ERROR] {pdf.name}: {exc}")
+            traceback.print_exc()
 
     print(f"\n[Programme 2] All results saved in {results_dir}")
