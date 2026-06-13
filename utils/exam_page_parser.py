@@ -23,13 +23,12 @@ X_CLUSTER_GAP_RATIO   = 0.015    # min horizontal gap (as page-width ratio) betw
 FILL_RATIO_FLOOR      = 0.10     # minimum dark-pixel ratio to count as "filled"
 FILL_RATIO_RELATIVE   = 1.4      # filled must be >= this × median fill in its row
 
-# Bubble grid is in the left portion of the page (right side = mantisse/exposant/unité boxes)
-BUBBLE_X_MAX_RATIO = 0.58        # ignore bubble candidates beyond this x fraction
+# Bubble grid is in a central band of the page (left labels + right boxes excluded)
+BUBBLE_X_MIN_RATIO = 0.10       # skip leftmost ~10% (question number labels)
+BUBBLE_X_MAX_RATIO = 0.58       # skip rightmost part (mantisse/exposant/unité boxes)
 
 # Grid quality filter: a row/column is valid only if it has at least this many bubbles.
-# For 8 choices, a real question row should have 5-8 detected bubbles.
-# Noise elements (borders, headers, text boxes) rarely align in 5+ same-y positions.
-MIN_BUBBLES_PER_ROW = 5          # a question row must have ≥ 5 detected choices
+MIN_BUBBLES_PER_ROW = 3          # a question row must have ≥ 3 detected choices
 MIN_BUBBLES_PER_COL = 2          # a choice column must appear in ≥ 2 question rows
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -50,7 +49,8 @@ def _find_bubbles(page_gray):
 
     min_area = MIN_BUBBLE_AREA_RATIO * page_area
     max_area = MAX_BUBBLE_AREA_RATIO * page_area
-    x_limit = int(BUBBLE_X_MAX_RATIO * pw)
+    x_min = int(BUBBLE_X_MIN_RATIO * pw)   # skip question-label column
+    x_max = int(BUBBLE_X_MAX_RATIO * pw)   # skip mantisse/exposant/unité boxes
 
     bubbles = []
     seen = set()
@@ -63,8 +63,8 @@ def _find_bubbles(page_gray):
         if not (ASPECT_RATIO_RANGE[0] < aspect < ASPECT_RATIO_RANGE[1]):
             continue
         cx = bx + bw // 2
-        # Only keep bubbles in the left bubble-grid area
-        if cx > x_limit:
+        # Only keep bubbles in the central bubble-grid band
+        if cx < x_min or cx > x_max:
             continue
         key = (bx // 12, by // 12)
         if key in seen:
