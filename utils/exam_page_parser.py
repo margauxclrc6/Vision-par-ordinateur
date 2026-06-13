@@ -164,7 +164,7 @@ def _assign_choices(grid, row_centers, col_centers, choice_labels):
 
 
 def _read_number_box(page_gray, x, y, w, h):
-    """OCR a small handwritten-number box. Returns cleaned string."""
+    """OCR a small handwritten-number box. Returns cleaned string. Skips empty boxes."""
     try:
         import pytesseract
     except ImportError:
@@ -173,6 +173,10 @@ def _read_number_box(page_gray, x, y, w, h):
         return ""
     crop = page_gray[max(0, y):y + h, max(0, x):x + w]
     if crop.size == 0:
+        return ""
+    # Quick emptiness check — skip OCR if box has no dark pixels
+    _, binary_check = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    if np.sum(binary_check > 0) / max(binary_check.size, 1) < 0.02:
         return ""
     # upscale for better OCR
     scale = max(1, 80 // max(crop.shape[0], 1))

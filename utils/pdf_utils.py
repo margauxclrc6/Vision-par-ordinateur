@@ -5,7 +5,7 @@ import cv2
 from pdf2image import convert_from_path
 
 
-PDF_DPI = 200    # higher = more accurate but slower
+PDF_DPI = 150    # 150 DPI is sufficient for bubble detection and OCR
 
 
 def pdf_to_images(pdf_path):
