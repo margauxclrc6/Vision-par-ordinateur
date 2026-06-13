@@ -281,7 +281,16 @@ def parse_exam_page(page_gray, choice_labels=None, page_idx=0, debug_dir=None):
         row["EXPOSANT"] = _read_number_box(page_gray, exp_x,  box_y, exp_w,  box_h)
         row["UNITE"]    = _read_number_box(page_gray, unit_x, box_y, unit_w, box_h)
 
-        rows.append(row)
+        # Drop rows that carry zero information: no choice marked and no numerical value.
+        # These are typically the answer-table header row (A B C D E F G H) whose letter
+        # boxes are detected as bubbles but none clears the fill threshold.
+        has_info = (row["CHOIX"] != "" or row["MANTISSE"] or row["EXPOSANT"])
+        if has_info:
+            rows.append(row)
+
+    # Re-number questions 1..N after filtering
+    for i, row in enumerate(rows):
+        row["QUESTION"] = i + 1
 
     return rows
 
