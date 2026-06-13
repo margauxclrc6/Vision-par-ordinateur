@@ -5,19 +5,38 @@ import numpy as np
 
 
 def load_image(path):
-    """Load image as grayscale and color. Handles unusual extensions via numpy."""
-    import numpy as np
+    """Load image as grayscale and color. Handles HEIC, uppercase extensions, etc."""
     path = str(path)
+
+    # 1. Standard cv2 load
     img_color = cv2.imread(path)
+
+    # 2. np.fromfile fallback (handles uppercase extensions on Linux)
     if img_color is None:
-        # Fallback for files cv2 fails to open directly (e.g. uppercase extensions)
         try:
             raw = np.fromfile(path, dtype=np.uint8)
             img_color = cv2.imdecode(raw, cv2.IMREAD_COLOR)
         except Exception:
             img_color = None
+
+    # 3. Pillow fallback — covers HEIC/HEIF (pillow-heif), WebP, TIFF, etc.
+    if img_color is None:
+        try:
+            from PIL import Image as _PILImage
+            # Register HEIC support if pillow-heif is available
+            try:
+                import pillow_heif
+                pillow_heif.register_heif_opener()
+            except ImportError:
+                pass
+            pil_img = _PILImage.open(path).convert("RGB")
+            img_color = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+        except Exception:
+            img_color = None
+
     if img_color is None:
         raise FileNotFoundError(f"Cannot load image: {path}")
+
     img_gray = cv2.cvtColor(img_color, cv2.COLOR_BGR2GRAY)
     return img_color, img_gray
 
