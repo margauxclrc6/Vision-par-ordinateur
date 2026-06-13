@@ -15,8 +15,10 @@ STUDENT_ID_DIGITS = 5
 STUDENT_ID_ROWS = 10                             # 0-9
 
 GROUP_REGION = (0.37, 0.19, 0.24, 0.36)
-GROUP_COLS = 3                                   # col1=digit, col2=letter (e.g. 04E)
+GROUP_COLS = 3                                   # col0=digit, col1=digit, col2=letter A-J
 GROUP_ROWS = 10
+# Mapping for the group letter column: row index 0-9 → A-J
+GROUP_LETTER_COL = 2          # index of the column that encodes a letter
 
 SIGNATURE_REGION = (0.03, 0.24, 0.30, 0.26)
 
@@ -53,7 +55,7 @@ def extract_student_id(page_gray):
 
 
 def extract_group(page_gray):
-    """Extract the group code from its bubble grid. Returns e.g. 'G02B' or '' on failure."""
+    """Extract the group code from its bubble grid. Returns e.g. '78H' or '' on failure."""
     binary = preprocess(page_gray)
     x, y, w, h = _locate_grid(page_gray, GROUP_REGION)
     grid = detect_grid_cells(binary, GROUP_ROWS, GROUP_COLS,
@@ -61,7 +63,13 @@ def extract_group(page_gray):
     chars = []
     for col in range(GROUP_COLS):
         d = read_bubble_column(grid, col)
-        chars.append(str(d) if d >= 0 else "?")
+        if d < 0:
+            chars.append("?")
+        elif col == GROUP_LETTER_COL:
+            # Letter column: row 0→A, 1→B, ..., 9→J
+            chars.append(chr(ord('A') + d))
+        else:
+            chars.append(str(d))
     return "".join(chars)
 
 

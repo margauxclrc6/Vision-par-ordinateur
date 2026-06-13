@@ -2,13 +2,15 @@
 Smart exam page parser.
 Automatically detects the answer table structure without hardcoded pixel coordinates.
 Works by:
-  1. Finding the answer grid (bubbles) via contour detection
-  2. Grouping bubbles into question rows and choice columns
-  3. Finding mantisse/exposant/unité boxes to the right
+  1. Finding the answer grid (bubbles) via contour detection — restricted to left 58% of page
+  2. Clustering bubbles into rows (questions) and columns (choices)
+  3. Filtering out noise by requiring each valid row/column to contain ≥ MIN_MEMBERS bubbles
+  4. Reading mantisse/exposant/unité boxes on the right side
 """
 
 import cv2
 import numpy as np
+from collections import Counter
 from utils.image_processing import preprocess, morpho_open, morpho_close
 
 
@@ -20,12 +22,20 @@ Y_CLUSTER_GAP_RATIO   = 0.025    # min vertical gap (as page-height ratio) betwe
 X_CLUSTER_GAP_RATIO   = 0.015    # min horizontal gap (as page-width ratio) between cols
 FILL_RATIO_FLOOR      = 0.10     # minimum dark-pixel ratio to count as "filled"
 FILL_RATIO_RELATIVE   = 1.4      # filled must be >= this × median fill in its row
+
+# Bubble grid is in the left portion of the page (right side = mantisse/exposant/unité boxes)
+BUBBLE_X_MAX_RATIO = 0.58        # ignore bubble candidates beyond this x fraction
+
+# Grid quality filter: a row/column is valid only if it has at least this many bubbles
+MIN_BUBBLES_PER_ROW = 2          # a question row must have ≥ 2 detected choices
+MIN_BUBBLES_PER_COL = 2          # a choice column must appear in ≥ 2 question rows
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 def _find_bubbles(page_gray):
     """
-    Return list of (cx, cy, fill_ratio, w, h) for every bubble-like contour on the page.
+    Return list of (cx, cy, fill_ratio, w, h) for every bubble-like contour
+    in the left portion of the page (where answer bubbles live).
     """
     ph, pw = page_gray.shape
     page_area = ph * pw
@@ -38,6 +48,7 @@ def _find_bubbles(page_gray):
 
     min_area = MIN_BUBBLE_AREA_RATIO * page_area
     max_area = MAX_BUBBLE_AREA_RATIO * page_area
+    x_limit = int(BUBBLE_X_MAX_RATIO * pw)
 
     bubbles = []
     seen = set()
@@ -49,11 +60,15 @@ def _find_bubbles(page_gray):
         aspect = bw / max(bh, 1)
         if not (ASPECT_RATIO_RANGE[0] < aspect < ASPECT_RATIO_RANGE[1]):
             continue
+        cx = bx + bw // 2
+        # Only keep bubbles in the left bubble-grid area
+        if cx > x_limit:
+            continue
         key = (bx // 12, by // 12)
         if key in seen:
             continue
         seen.add(key)
-        cx, cy = bx + bw // 2, by + bh // 2
+        cy = by + bh // 2
         pad = max(2, int(min(bw, bh) * 0.12))
         inner = inv[by + pad: by + bh - pad, bx + pad: bx + bw - pad]
         fill = float(np.sum(inner > 0)) / max(inner.size, 1)
@@ -78,7 +93,7 @@ def _cluster_1d(values, gap):
 def _bubbles_to_grid(bubbles, ph, pw):
     """
     Convert flat bubble list → dict {(row_idx, col_idx): fill_ratio}.
-    Row index = question number (0-based), col index = choice (0=A, 1=B, …).
+    Filters out rows/columns that don't have enough bubbles (noise reduction).
     Returns (grid_dict, row_centers_y, col_centers_x).
     """
     if not bubbles:
@@ -90,43 +105,62 @@ def _bubbles_to_grid(bubbles, ph, pw):
     cy_list = [b[1] for b in bubbles]
     cx_list = [b[0] for b in bubbles]
 
-    row_centers = _cluster_1d(cy_list, y_gap)
-    col_centers = _cluster_1d(cx_list, x_gap)
+    row_centers_all = _cluster_1d(cy_list, y_gap)
+    col_centers_all = _cluster_1d(cx_list, x_gap)
 
     def nearest(val, centers):
         return int(np.argmin([abs(val - c) for c in centers]))
 
-    grid = {}
+    # First pass: assign every bubble to its nearest row/col center
+    assignments = []
     for cx, cy, fill, bw, bh in bubbles:
-        r = nearest(cy, row_centers)
-        c = nearest(cx, col_centers)
-        if (r, c) not in grid or fill > grid[(r, c)]:
-            grid[(r, c)] = fill
+        r = nearest(cy, row_centers_all)
+        c = nearest(cx, col_centers_all)
+        assignments.append((r, c, fill))
+
+    # Count how many bubbles each row and column index received
+    row_counts = Counter(a[0] for a in assignments)
+    col_counts = Counter(a[1] for a in assignments)
+
+    # Keep only rows/cols with enough members — this drops table border hits, etc.
+    valid_rows = sorted(r for r, cnt in row_counts.items() if cnt >= MIN_BUBBLES_PER_ROW)
+    valid_cols = sorted(c for c, cnt in col_counts.items() if cnt >= MIN_BUBBLES_PER_COL)
+
+    if not valid_rows or not valid_cols:
+        # Fallback: no filtering (rare edge case)
+        valid_rows = list(range(len(row_centers_all)))
+        valid_cols = list(range(len(col_centers_all)))
+
+    # Remap row/col indices to 0-based after filtering
+    row_remap = {old: new for new, old in enumerate(valid_rows)}
+    col_remap = {old: new for new, old in enumerate(valid_cols)}
+
+    row_centers = [row_centers_all[i] for i in valid_rows]
+    col_centers = [col_centers_all[i] for i in valid_cols]
+
+    grid = {}
+    for r, c, fill in assignments:
+        if r in row_remap and c in col_remap:
+            nr, nc = row_remap[r], col_remap[c]
+            if (nr, nc) not in grid or fill > grid[(nr, nc)]:
+                grid[(nr, nc)] = fill
 
     return grid, row_centers, col_centers
 
 
 def _assign_choices(grid, row_centers, col_centers, choice_labels):
     """
-    Given a grid of fill ratios, decide which choice is marked per row.
+    Decide which choice is marked per row.
     Returns list of (choice_label or None) per row.
-    Tries two interpretations:
-      (a) choices are columns  → row = question, col = choice A/B/C/D
-      (b) choices are rows × col=0 stacked per question
-    Picks (a) if n_cols ~ len(choice_labels), else falls back.
     """
     n_rows = len(row_centers)
     n_cols = len(col_centers)
     answers = []
-
     n_choice = len(choice_labels)
 
     if n_cols >= n_choice:
-        # interpretation (a): each row is one question, columns are choices
         for r in range(n_rows):
             fills = np.array([grid.get((r, c), 0.0) for c in range(n_cols)])
-            # only consider first n_choice columns (the leftmost ones that form the bubble area)
-            # detect which columns are the "choice" columns by clustering x-positions
             choice_fills = fills[:n_choice]
             best = int(np.argmax(choice_fills))
             med = float(np.median(choice_fills))
@@ -137,7 +171,6 @@ def _assign_choices(grid, row_centers, col_centers, choice_labels):
         return answers, "cols"
 
     elif n_cols == 1 or (n_rows % n_choice == 0):
-        # interpretation (b): groups of n_choice rows form one question
         n_questions = n_rows // n_choice if n_choice > 0 else n_rows
         for q in range(n_questions):
             fills = np.array([grid.get((q * n_choice + ci, 0), 0.0)
@@ -151,7 +184,6 @@ def _assign_choices(grid, row_centers, col_centers, choice_labels):
         return answers, "rows"
 
     else:
-        # mixed / unclear — treat as (a) best effort
         for r in range(n_rows):
             fills = np.array([grid.get((r, c), 0.0) for c in range(n_cols)])
             best = int(np.argmax(fills))
@@ -228,13 +260,11 @@ def parse_exam_page(page_gray, choice_labels=None, page_idx=0, debug_dir=None):
             "QUESTION": q_idx + 1,
             "CHOIX": choice or "",
         }
-        # Estimate mantisse/exposant/unité box positions from row center
         if q_idx < len(row_centers):
             ry = row_centers[q_idx]
         else:
             ry = int((q_idx + 0.5) / max(n_questions, 1) * ph)
 
-        # Mantisse box: right third of page, ~4% height band around row center
         box_h = max(30, int(ph * 0.045))
         box_y = max(0, ry - box_h // 2)
 
