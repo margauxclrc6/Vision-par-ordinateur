@@ -198,7 +198,7 @@ def parse_exam_page(page_gray, choice_labels=None, page_idx=0, debug_dir=None):
     choice_labels: e.g. ['A','B','C','D']
     """
     if choice_labels is None:
-        choice_labels = ['A', 'B', 'C', 'D']
+        choice_labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 
     ph, pw = page_gray.shape
 

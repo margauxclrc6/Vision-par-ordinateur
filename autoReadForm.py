@@ -20,8 +20,8 @@ from utils.form_layout import PAGE1_FIELDS, crop_field
 from utils.exam_page_parser import parse_exam_page
 
 
-# Choices available per question (adapt to actual form)
-CHOICE_LABELS = ['A', 'B', 'C', 'D']
+# Choices available per question — up to 8 (A-H) as per spec
+CHOICE_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 
 
 def _read_field_ocr(page_gray, rel_coords, mode="printed"):
@@ -108,8 +108,8 @@ def _parse_exam_pages(pages_gray, debug_dir=None):
     exam_rows = []
     q_offset = 0
 
-    # page index 0 = identity page, index 1 = blank/cryptogram only
-    for page_idx, page in enumerate(pages_gray[2:], start=2):
+    # Spec: "pages d'examens (p5→fin)" → index 4 onward (pages 1-4 = identity + preamble)
+    for page_idx, page in enumerate(pages_gray[4:], start=4):
         page_gray, _ = deskew(page)
         rows = parse_exam_page(page_gray, CHOICE_LABELS,
                                page_idx=page_idx, debug_dir=debug_dir)
@@ -152,10 +152,19 @@ def _build_xlsx(page1_data, exam_rows, crypto_valid, xlsx_path):
 
     ws2 = wb.create_sheet(title="EXAM")
     if exam_rows:
-        headers = list(exam_rows[0].keys())
+        # Build headers: QUESTION, CHOIX A, CHOIX B, …, CHOIX H, MANTISSE, EXPOSANT, UNITE
+        choice_headers = [f"CHOIX {c}" for c in CHOICE_LABELS]
+        headers = ["QUESTION"] + choice_headers + ["MANTISSE", "EXPOSANT", "UNITE"]
         ws2.append(headers)
         for row in exam_rows:
-            ws2.append([row.get(h, "") for h in headers])
+            chosen = row.get("CHOIX", "")
+            values = [row.get("QUESTION", "")]
+            for c in CHOICE_LABELS:
+                values.append(1 if chosen == c else 0)
+            values.append(row.get("MANTISSE", ""))
+            values.append(row.get("EXPOSANT", ""))
+            values.append(row.get("UNITE", ""))
+            ws2.append(values)
 
     wb.save(str(xlsx_path))
 
