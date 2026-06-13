@@ -26,8 +26,10 @@ FILL_RATIO_RELATIVE   = 1.4      # filled must be >= this × median fill in its 
 # Bubble grid is in the left portion of the page (right side = mantisse/exposant/unité boxes)
 BUBBLE_X_MAX_RATIO = 0.58        # ignore bubble candidates beyond this x fraction
 
-# Grid quality filter: a row/column is valid only if it has at least this many bubbles
-MIN_BUBBLES_PER_ROW = 2          # a question row must have ≥ 2 detected choices
+# Grid quality filter: a row/column is valid only if it has at least this many bubbles.
+# For 8 choices, a real question row should have 5-8 detected bubbles.
+# Noise elements (borders, headers, text boxes) rarely align in 5+ same-y positions.
+MIN_BUBBLES_PER_ROW = 5          # a question row must have ≥ 5 detected choices
 MIN_BUBBLES_PER_COL = 2          # a choice column must appear in ≥ 2 question rows
 # ─────────────────────────────────────────────────────────────────────────────
 
