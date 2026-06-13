@@ -44,13 +44,20 @@ def _load_database(signatures_dir):
     return db
 
 
+_db_cache = {}   # {str(signatures_dir): db}
+
+
 def match_signature(sig_gray, signatures_dir):
     """
     Identify a signature against the class database.
     Returns (best_id, best_score) — best_id is None if no match exceeds threshold.
     Compares the query against all samples per student and takes the max score.
+    DB is cached per directory to avoid reloading for every call.
     """
-    db = _load_database(signatures_dir)
+    key = str(signatures_dir)
+    if key not in _db_cache:
+        _db_cache[key] = _load_database(signatures_dir)
+    db = _db_cache[key]
     if not db:
         return None, 0.0
 
