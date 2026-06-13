@@ -24,11 +24,11 @@ FILL_RATIO_FLOOR      = 0.10     # minimum dark-pixel ratio to count as "filled"
 FILL_RATIO_RELATIVE   = 1.4      # filled must be >= this × median fill in its row
 
 # Bubble grid is in a central band of the page (left labels + right boxes excluded)
-BUBBLE_X_MIN_RATIO = 0.10       # skip leftmost ~10% (question number labels)
+BUBBLE_X_MIN_RATIO = 0.05       # skip leftmost ~5% (question number labels)
 BUBBLE_X_MAX_RATIO = 0.58       # skip rightmost part (mantisse/exposant/unité boxes)
 
 # Grid quality filter: a row/column is valid only if it has at least this many bubbles.
-MIN_BUBBLES_PER_ROW = 3          # a question row must have ≥ 3 detected choices
+MIN_BUBBLES_PER_ROW = 2          # a question row must have ≥ 2 detected choices
 MIN_BUBBLES_PER_COL = 2          # a choice column must appear in ≥ 2 question rows
 # ─────────────────────────────────────────────────────────────────────────────
 
