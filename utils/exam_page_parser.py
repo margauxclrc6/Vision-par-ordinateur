@@ -157,7 +157,9 @@ def _read_number_box(page_gray, x, y, w, h, letters=False):
     if dark_ratio < 0.005:
         print(f"    DBG _read_number_box: SKIP empty (dark={dark_ratio:.4f}) x={x} y={y} w={w} h={h}")
         return ""
-    scale = max(1, 80 // max(crop.shape[0], 1))
+    # Upscale to ~200px height for reliable Tesseract accuracy
+    target_h = 200
+    scale = max(2, target_h // max(crop.shape[0], 1))
     crop_up = cv2.resize(crop, (crop.shape[1] * scale, crop.shape[0] * scale),
                          interpolation=cv2.INTER_CUBIC)
     _, binary = cv2.threshold(crop_up, 0, 255,
@@ -165,7 +167,7 @@ def _read_number_box(page_gray, x, y, w, h, letters=False):
     whitelist = ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
                  if letters else "0123456789.-")
     text = pytesseract.image_to_string(
-        binary, config=f"--psm 8 -c tessedit_char_whitelist={whitelist}")
+        binary, config=f"--psm 7 -c tessedit_char_whitelist={whitelist}")
     return text.strip()
 
 
