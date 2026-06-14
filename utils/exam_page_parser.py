@@ -49,7 +49,7 @@ FOOTER_SKIP_RATIO = 0.04      # ignore the bottom 4 % (page number / cryptogram)
 
 # Numerical answer-box positions (fraction of page width)
 # One student-fill rectangle (value) at far left; unit label pre-printed on right
-MANT_X, MANT_W = 0.03, 0.13   # the student-written value box
+MANT_X, MANT_W = 0.03, 0.16   # the student-written value box
 EXP_X,  EXP_W  = 0.16, 0.08   # small exponent box (above mantissa row)
 UNIT_X, UNIT_W = 0.30, 0.22   # pre-printed unit label box
 # ─────────────────────────────────────────────────────────────────────────────
@@ -167,8 +167,14 @@ def _read_number_box(page_gray, x, y, w, h, letters=False):
     whitelist = ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
                  if letters else "0123456789.-")
     text = pytesseract.image_to_string(
-        binary, config=f"--psm 7 -c tessedit_char_whitelist={whitelist}")
-    return text.strip()
+        binary, config=f"--psm 7 -c tessedit_char_whitelist={whitelist}").strip()
+    if not text:
+        # Fallback: PSM 6 without whitelist
+        text = pytesseract.image_to_string(binary, config="--psm 6").strip()
+        # Keep only relevant chars
+        import re
+        text = re.sub(r"[^0-9A-Za-z.\-]", "", text)
+    return text
 
 
 def parse_exam_page(page_gray, choice_labels=None, page_idx=0, debug_dir=None):
