@@ -205,9 +205,8 @@ def parse_exam_page(page_gray, choice_labels=None, page_idx=0, debug_dir=None):
             # ── Numerical question ──
             # Answer boxes sit in the bottom 40% of the block (below "Value/Valeur" labels).
             # Read a wide band from 55% → 95% of block height to reliably catch them.
-            by_num = y0 + int((y1 - y0) * 0.55)
+            by_num = max(0, y0 + int((y1 - y0) * 0.55))
             box_h  = max(35, int((y1 - y0) * 0.40))
-            by = max(0, yc - box_h // 2)
             row["MANTISSE"] = _read_number_box(page_gray, int(MANT_X * pw), by_num,
                                                int(MANT_W * pw), box_h)
             row["EXPOSANT"] = _read_number_box(page_gray, int(EXP_X * pw), by_num,
