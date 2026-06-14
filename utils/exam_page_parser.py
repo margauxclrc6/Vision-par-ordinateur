@@ -153,9 +153,7 @@ def _read_number_box(page_gray, x, y, w, h, letters=False):
         return ""
     _, binary_check = cv2.threshold(crop, 0, 255,
                                     cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    dark_ratio = np.sum(binary_check > 0) / max(binary_check.size, 1)
-    if dark_ratio < 0.005:
-        print(f"    DBG _read_number_box: SKIP empty (dark={dark_ratio:.4f}) x={x} y={y} w={w} h={h}")
+    if np.sum(binary_check > 0) / max(binary_check.size, 1) < 0.005:
         return ""
     # Upscale to ~200px height for reliable Tesseract accuracy
     target_h = 200
@@ -200,7 +198,6 @@ def parse_exam_page(page_gray, choice_labels=None, page_idx=0, debug_dir=None):
             # ── Multiple-choice question ──
             fills = np.array([f for (_, f) in checkboxes])
             best = int(np.argmax(fills))
-            print(f"  DBG Q{len(rows)+1}: {len(checkboxes)} boxes, fills={[round(f,3) for _,f in checkboxes]}, best={best}")
             med = float(np.median(fills))
             marked = None
             if fills[best] >= FILL_FLOOR and fills[best] >= med * FILL_RELATIVE:
@@ -214,10 +211,8 @@ def parse_exam_page(page_gray, choice_labels=None, page_idx=0, debug_dir=None):
             # ── Numerical question ──
             box_h  = max(30, int((y1 - y0) * 0.28))
             by_num = max(0, y1 - box_h - 5)
-            m = _read_number_box(page_gray, int(MANT_X * pw), by_num,
-                                 int(MANT_W * pw), box_h)
-            print(f"  DBG NUM Q{len(rows)+1}: block=[{y0},{y1}] by_num={by_num} box_h={box_h} mant={m!r}")
-            row["MANTISSE"] = m
+            row["MANTISSE"] = _read_number_box(page_gray, int(MANT_X * pw), by_num,
+                                               int(MANT_W * pw), box_h)
             row["EXPOSANT"] = _read_number_box(page_gray, int(EXP_X * pw), by_num,
                                                int(EXP_W * pw), box_h)
             row["UNITE"]    = _read_number_box(page_gray, int(UNIT_X * pw), by_num,
