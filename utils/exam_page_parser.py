@@ -191,6 +191,7 @@ def parse_exam_page(page_gray, choice_labels=None, page_idx=0, debug_dir=None):
             # ── Multiple-choice question ──
             fills = np.array([f for (_, f) in checkboxes])
             best = int(np.argmax(fills))
+            print(f"  DBG Q{len(rows)+1}: {len(checkboxes)} boxes, fills={[round(f,3) for _,f in checkboxes]}, best={best}")
             med = float(np.median(fills))
             marked = None
             if fills[best] >= FILL_FLOOR and fills[best] >= med * FILL_RELATIVE:
