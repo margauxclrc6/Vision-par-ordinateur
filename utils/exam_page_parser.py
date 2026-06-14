@@ -137,12 +137,10 @@ def _find_checkboxes_in_strip(page_gray, y0, y1):
             best_per_slot[key] = (cy, fill)
 
     boxes = sorted(best_per_slot.values(), key=lambda b: b[0])
-
-    boxes.sort(key=lambda b: b[0])
     return boxes
 
 
-def _read_number_box(page_gray, x, y, w, h):
+def _read_number_box(page_gray, x, y, w, h, letters=False):
     """OCR a small handwritten-number box. Returns cleaned string. Skips empty boxes."""
     try:
         import pytesseract
@@ -153,7 +151,6 @@ def _read_number_box(page_gray, x, y, w, h):
     crop = page_gray[max(0, y):y + h, max(0, x):x + w]
     if crop.size == 0:
         return ""
-    # Quick emptiness check — skip OCR if box has almost no dark pixels
     _, binary_check = cv2.threshold(crop, 0, 255,
                                     cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     if np.sum(binary_check > 0) / max(binary_check.size, 1) < 0.005:
@@ -163,8 +160,10 @@ def _read_number_box(page_gray, x, y, w, h):
                          interpolation=cv2.INTER_CUBIC)
     _, binary = cv2.threshold(crop_up, 0, 255,
                               cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    whitelist = ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+                 if letters else "0123456789.-")
     text = pytesseract.image_to_string(
-        binary, config="--psm 8 -c tessedit_char_whitelist=0123456789.-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+        binary, config=f"--psm 8 -c tessedit_char_whitelist={whitelist}")
     return text.strip()
 
 
@@ -205,14 +204,15 @@ def parse_exam_page(page_gray, choice_labels=None, page_idx=0, debug_dir=None):
             # ── Numerical question ──
             # Answer boxes sit in the bottom 40% of the block (below "Value/Valeur" labels).
             # Read a wide band from 55% → 95% of block height to reliably catch them.
-            by_num = max(0, y0 + int((y1 - y0) * 0.55))
-            box_h  = max(35, int((y1 - y0) * 0.40))
+            # Answer boxes are in the BOTTOM 28% of the block
+            box_h  = max(30, int((y1 - y0) * 0.28))
+            by_num = max(0, y1 - box_h - 5)
             row["MANTISSE"] = _read_number_box(page_gray, int(MANT_X * pw), by_num,
                                                int(MANT_W * pw), box_h)
             row["EXPOSANT"] = _read_number_box(page_gray, int(EXP_X * pw), by_num,
                                                int(EXP_W * pw), box_h)
             row["UNITE"]    = _read_number_box(page_gray, int(UNIT_X * pw), by_num,
-                                               int(UNIT_W * pw), box_h)
+                                               int(UNIT_W * pw), box_h, letters=True)
             debug_items.append((y0, y1, checkboxes, None, "num"))
 
         rows.append(row)
