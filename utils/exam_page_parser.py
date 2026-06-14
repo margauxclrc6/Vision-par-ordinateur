@@ -28,7 +28,7 @@ from utils.image_processing import (preprocess, morpho_open,
 # ── tunables ──────────────────────────────────────────────────────────────────
 MIN_BUBBLE_AREA_RATIO = 0.00015  # min checkbox area as fraction of page area
 MAX_BUBBLE_AREA_RATIO = 0.004    # max checkbox area as fraction of page area
-ASPECT_RATIO_RANGE    = (0.5, 2.0)   # width/height of a checkbox bounding box
+ASPECT_RATIO_RANGE    = (0.3, 3.0)   # width/height of a checkbox bounding box
 
 # Left strip where multiple-choice checkboxes live (fraction of page width)
 CHECKBOX_X_MIN = 0.04
@@ -39,15 +39,16 @@ FILL_FLOOR     = 0.14    # absolute dark-pixel ratio above which a box is "marke
 FILL_RELATIVE  = 1.6     # marked box must be ≥ this × the median fill of its group
 
 # Question-block detection
-BORDER_MIN_LEN_RATIO = 0.55   # a border line must span ≥ 55 % of the page width
-BLOCK_MIN_HEIGHT_RATIO = 0.04 # a question block must be ≥ 4 % of the page height
-HEADER_SKIP_RATIO = 0.10      # ignore the top 10 % (page header band)
-FOOTER_SKIP_RATIO = 0.05      # ignore the bottom 5 % (page number / cryptogram)
+BORDER_MIN_LEN_RATIO = 0.35   # a border line must span ≥ 35 % of the page width
+BLOCK_MIN_HEIGHT_RATIO = 0.03 # a question block must be ≥ 3 % of the page height
+HEADER_SKIP_RATIO = 0.08      # ignore the top 8 % (page header band)
+FOOTER_SKIP_RATIO = 0.04      # ignore the bottom 4 % (page number / cryptogram)
 
 # Numerical answer-box positions (fraction of page width), relative to block y-centre
-MANT_X, MANT_W = 0.11, 0.16
-EXP_X,  EXP_W  = 0.27, 0.13
-UNIT_X, UNIT_W = 0.40, 0.16
+# From debug images: mantissa box on left, ×10^exp in centre, unit on right
+MANT_X, MANT_W = 0.04, 0.20
+EXP_X,  EXP_W  = 0.24, 0.10
+UNIT_X, UNIT_W = 0.34, 0.22
 # ─────────────────────────────────────────────────────────────────────────────
 
 
