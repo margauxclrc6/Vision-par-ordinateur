@@ -153,7 +153,9 @@ def _read_number_box(page_gray, x, y, w, h, letters=False):
         return ""
     _, binary_check = cv2.threshold(crop, 0, 255,
                                     cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    if np.sum(binary_check > 0) / max(binary_check.size, 1) < 0.005:
+    dark_ratio = np.sum(binary_check > 0) / max(binary_check.size, 1)
+    if dark_ratio < 0.005:
+        print(f"    DBG _read_number_box: SKIP empty (dark={dark_ratio:.4f}) x={x} y={y} w={w} h={h}")
         return ""
     scale = max(1, 80 // max(crop.shape[0], 1))
     crop_up = cv2.resize(crop, (crop.shape[1] * scale, crop.shape[0] * scale),
@@ -202,13 +204,12 @@ def parse_exam_page(page_gray, choice_labels=None, page_idx=0, debug_dir=None):
             debug_items.append((y0, y1, checkboxes, marked, "mcq"))
         else:
             # ── Numerical question ──
-            # Answer boxes sit in the bottom 40% of the block (below "Value/Valeur" labels).
-            # Read a wide band from 55% → 95% of block height to reliably catch them.
-            # Answer boxes are in the BOTTOM 28% of the block
             box_h  = max(30, int((y1 - y0) * 0.28))
             by_num = max(0, y1 - box_h - 5)
-            row["MANTISSE"] = _read_number_box(page_gray, int(MANT_X * pw), by_num,
-                                               int(MANT_W * pw), box_h)
+            m = _read_number_box(page_gray, int(MANT_X * pw), by_num,
+                                 int(MANT_W * pw), box_h)
+            print(f"  DBG NUM Q{len(rows)+1}: block=[{y0},{y1}] by_num={by_num} box_h={box_h} mant={m!r}")
+            row["MANTISSE"] = m
             row["EXPOSANT"] = _read_number_box(page_gray, int(EXP_X * pw), by_num,
                                                int(EXP_W * pw), box_h)
             row["UNITE"]    = _read_number_box(page_gray, int(UNIT_X * pw), by_num,
