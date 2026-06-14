@@ -34,6 +34,9 @@ ASPECT_RATIO_RANGE    = (0.3, 3.0)   # width/height of a checkbox bounding box
 CHECKBOX_X_MIN = 0.04
 CHECKBOX_X_MAX = 0.16
 
+# Skip top fraction of each block (contains "● QUESTION N" header band)
+BLOCK_HEADER_SKIP = 0.25
+
 # Fill detection
 FILL_FLOOR     = 0.14    # absolute dark-pixel ratio above which a box is "marked"
 FILL_RELATIVE  = 1.6     # marked box must be ≥ this × the median fill of its group
@@ -101,7 +104,9 @@ def _find_checkboxes_in_strip(page_gray, y0, y1):
 
     x0 = int(CHECKBOX_X_MIN * pw)
     x1 = int(CHECKBOX_X_MAX * pw)
-    strip = page_gray[y0:y1, x0:x1]
+    # Skip the header band at the top of the block (contains the ● QUESTION N label)
+    y_skip = int(y0 + (y1 - y0) * BLOCK_HEADER_SKIP)
+    strip = page_gray[y_skip:y1, x0:x1]
     if strip.size == 0:
         return []
 
@@ -131,7 +136,7 @@ def _find_checkboxes_in_strip(page_gray, y0, y1):
         pad = max(2, int(min(bw, bh) * 0.18))
         inner = inv[by + pad: by + bh - pad, bx + pad: bx + bw - pad]
         fill = float(np.sum(inner > 0)) / max(inner.size, 1)
-        boxes.append((y0 + by + bh // 2, fill))
+        boxes.append((y_skip + by + bh // 2, fill))
 
     boxes.sort(key=lambda b: b[0])
     return boxes
@@ -197,8 +202,10 @@ def parse_exam_page(page_gray, choice_labels=None, page_idx=0, debug_dir=None):
             debug_items.append((y0, y1, checkboxes, marked, "mcq"))
         else:
             # ── Numerical question ──
-            yc = (y0 + y1) // 2
-            box_h = max(28, int((y1 - y0) * 0.45))
+            # Look in bottom 3/4 of block (skip header band)
+            y_ans_top = int(y0 + (y1 - y0) * BLOCK_HEADER_SKIP)
+            yc = (y_ans_top + y1) // 2
+            box_h = max(28, int((y1 - y_ans_top) * 0.55))
             by = max(0, yc - box_h // 2)
             row["MANTISSE"] = _read_number_box(page_gray, int(MANT_X * pw), by,
                                                int(MANT_W * pw), box_h)
