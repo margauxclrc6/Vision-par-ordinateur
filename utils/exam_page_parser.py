@@ -156,7 +156,7 @@ def _read_number_box(page_gray, x, y, w, h):
     # Quick emptiness check — skip OCR if box has almost no dark pixels
     _, binary_check = cv2.threshold(crop, 0, 255,
                                     cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    if np.sum(binary_check > 0) / max(binary_check.size, 1) < 0.03:
+    if np.sum(binary_check > 0) / max(binary_check.size, 1) < 0.005:
         return ""
     scale = max(1, 80 // max(crop.shape[0], 1))
     crop_up = cv2.resize(crop, (crop.shape[1] * scale, crop.shape[0] * scale),
@@ -164,7 +164,7 @@ def _read_number_box(page_gray, x, y, w, h):
     _, binary = cv2.threshold(crop_up, 0, 255,
                               cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     text = pytesseract.image_to_string(
-        binary, config="--psm 8 -c tessedit_char_whitelist=0123456789-")
+        binary, config="--psm 8 -c tessedit_char_whitelist=0123456789.-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
     return text.strip()
 
 
@@ -203,16 +203,16 @@ def parse_exam_page(page_gray, choice_labels=None, page_idx=0, debug_dir=None):
             debug_items.append((y0, y1, checkboxes, marked, "mcq"))
         else:
             # ── Numerical question ──
-            # Look in bottom 3/4 of block (skip header band)
-            y_ans_top = int(y0 + (y1 - y0) * BLOCK_HEADER_SKIP)
-            yc = (y_ans_top + y1) // 2
-            box_h = max(28, int((y1 - y_ans_top) * 0.55))
+            # Answer boxes sit in the bottom 40% of the block (below "Value/Valeur" labels).
+            # Read a wide band from 55% → 95% of block height to reliably catch them.
+            by_num = y0 + int((y1 - y0) * 0.55)
+            box_h  = max(35, int((y1 - y0) * 0.40))
             by = max(0, yc - box_h // 2)
-            row["MANTISSE"] = _read_number_box(page_gray, int(MANT_X * pw), by,
+            row["MANTISSE"] = _read_number_box(page_gray, int(MANT_X * pw), by_num,
                                                int(MANT_W * pw), box_h)
-            row["EXPOSANT"] = _read_number_box(page_gray, int(EXP_X * pw), by,
+            row["EXPOSANT"] = _read_number_box(page_gray, int(EXP_X * pw), by_num,
                                                int(EXP_W * pw), box_h)
-            row["UNITE"]    = _read_number_box(page_gray, int(UNIT_X * pw), by,
+            row["UNITE"]    = _read_number_box(page_gray, int(UNIT_X * pw), by_num,
                                                int(UNIT_W * pw), box_h)
             debug_items.append((y0, y1, checkboxes, None, "num"))
 
