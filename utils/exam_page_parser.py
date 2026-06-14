@@ -47,11 +47,11 @@ BLOCK_MIN_HEIGHT_RATIO = 0.03 # a question block must be ≥ 3 % of the page hei
 HEADER_SKIP_RATIO = 0.08      # ignore the top 8 % (page header band)
 FOOTER_SKIP_RATIO = 0.04      # ignore the bottom 4 % (page number / cryptogram)
 
-# Numerical answer-box positions (fraction of page width), relative to block y-centre
-# From debug images: mantissa box on left, ×10^exp in centre, unit on right
-MANT_X, MANT_W = 0.04, 0.20
-EXP_X,  EXP_W  = 0.24, 0.10
-UNIT_X, UNIT_W = 0.34, 0.22
+# Numerical answer-box positions (fraction of page width)
+# One student-fill rectangle (value) at far left; unit label pre-printed on right
+MANT_X, MANT_W = 0.03, 0.13   # the student-written value box
+EXP_X,  EXP_W  = 0.16, 0.08   # small exponent box (above mantissa row)
+UNIT_X, UNIT_W = 0.30, 0.22   # pre-printed unit label box
 # ─────────────────────────────────────────────────────────────────────────────
 
 
