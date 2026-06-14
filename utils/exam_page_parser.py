@@ -119,8 +119,7 @@ def _find_checkboxes_in_strip(page_gray, y0, y1):
     min_area = MIN_BUBBLE_AREA_RATIO * page_area
     max_area = MAX_BUBBLE_AREA_RATIO * page_area
 
-    boxes = []
-    seen = set()
+    best_per_slot = {}   # key → (cy, fill)
     for cnt in cnts:
         bx, by, bw, bh = cv2.boundingRect(cnt)
         area = bw * bh
@@ -129,14 +128,15 @@ def _find_checkboxes_in_strip(page_gray, y0, y1):
         aspect = bw / max(bh, 1)
         if not (ASPECT_RATIO_RANGE[0] < aspect < ASPECT_RATIO_RANGE[1]):
             continue
-        key = (by // 10,)
-        if key in seen:
-            continue
-        seen.add(key)
         pad = max(2, int(min(bw, bh) * 0.18))
         inner = inv[by + pad: by + bh - pad, bx + pad: bx + bw - pad]
         fill = float(np.sum(inner > 0)) / max(inner.size, 1)
-        boxes.append((y_skip + by + bh // 2, fill))
+        cy = y_skip + by + bh // 2
+        key = (by // 20,)
+        if key not in best_per_slot or fill > best_per_slot[key][1]:
+            best_per_slot[key] = (cy, fill)
+
+    boxes = sorted(best_per_slot.values(), key=lambda b: b[0])
 
     boxes.sort(key=lambda b: b[0])
     return boxes
