@@ -29,6 +29,12 @@ def _prepare_image(img_gray):
                               interpolation=cv2.INTER_AREA)
 
     img_gray, _ = deskew(img_gray)
+
+    # Perspective correction: map L-bracket marks to canonical PDF coordinates
+    corrected, ok = correct_perspective(img_gray)
+    if ok:
+        img_gray = corrected
+
     return img_gray
 
 

@@ -97,21 +97,37 @@ def _find_corner_mark(roi, expect_corner):
 
 def correct_perspective(img_gray):
     """
-    Use the 4 L-bracket registration marks printed in the corners of the A4 form
-    to compute a perspective transform and warp the image to a flat frontal view.
-    Each mark is searched in the outer 15% of the image in each corner.
+    Use the 4 L-bracket registration marks to warp the camera photo into the same
+    coordinate system as the scanned PDF, so all calibrated relative coordinates
+    (STUDENT_ID_REGION, GROUP_DIGITS_REGION, etc.) apply directly.
+
+    PDF-measured L-bracket positions (relative to page):
+        tl=(0.0798, 0.0588)  tr=(0.8690, 0.1149)
+        bl=(0.1001, 0.9320)  br=(0.9018, 0.9306)
+
+    We map the detected marks in the photo to those exact positions in the output
+    image (A4 proportions, 1200 px wide), giving a warped image whose coordinate
+    system matches the PDF exactly.
+
     Returns (corrected_img, success: bool).
     """
-    h, w = img_gray.shape
-    margin_x = int(w * 0.15)
-    margin_y = int(h * 0.15)
+    # Known PDF-relative positions of the L-bracket centres (tl, tr, br, bl)
+    PDF_MARKS = {
+        'tl': (0.0798, 0.0588),
+        'tr': (0.8690, 0.1149),
+        'br': (0.9018, 0.9306),
+        'bl': (0.1001, 0.9320),
+    }
 
-    # Extract corner ROIs
+    h, w = img_gray.shape
+    margin_x = int(w * 0.18)
+    margin_y = int(h * 0.18)
+
     rois = {
-        'tl': (img_gray[:margin_y, :margin_x],          0,       0),
-        'tr': (img_gray[:margin_y, w - margin_x:],       w - margin_x, 0),
-        'bl': (img_gray[h - margin_y:, :margin_x],       0,       h - margin_y),
-        'br': (img_gray[h - margin_y:, w - margin_x:],   w - margin_x, h - margin_y),
+        'tl': (img_gray[:margin_y, :margin_x],            0,           0),
+        'tr': (img_gray[:margin_y, w - margin_x:],         w - margin_x, 0),
+        'bl': (img_gray[h - margin_y:, :margin_x],         0,           h - margin_y),
+        'br': (img_gray[h - margin_y:, w - margin_x:],     w - margin_x, h - margin_y),
     }
 
     src_pts = []
@@ -124,10 +140,14 @@ def correct_perspective(img_gray):
 
     src = np.array(src_pts, dtype=np.float32)
 
-    tgt_w = min(w, 1200)
-    tgt_h = int(tgt_w * 297 / 210)
-    dst = np.array([[0, 0], [tgt_w - 1, 0],
-                    [tgt_w - 1, tgt_h - 1], [0, tgt_h - 1]], dtype=np.float32)
+    tgt_w = 1200
+    tgt_h = int(tgt_w * 297 / 210)   # A4 aspect ratio ≈ 1697
+
+    dst = np.array(
+        [[PDF_MARKS[k][0] * tgt_w, PDF_MARKS[k][1] * tgt_h]
+         for k in ('tl', 'tr', 'br', 'bl')],
+        dtype=np.float32,
+    )
 
     M = cv2.getPerspectiveTransform(src, dst)
     warped = cv2.warpPerspective(img_gray, M, (tgt_w, tgt_h),
