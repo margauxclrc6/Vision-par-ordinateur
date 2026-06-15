@@ -24,7 +24,7 @@ GROUP_COLS     = 3        # col0=digit, col1=digit, col2=letter A-J
 GROUP_ROWS     = 10
 GROUP_LETTER_COL = 2      # column index that encodes a letter (row 0→A … 9→J)
 
-SIGNATURE_REGION = (0.17, 0.23, 0.17, 0.12)  # tightened to signature box only
+SIGNATURE_REGION = (0.03, 0.20, 0.35, 0.32)  # search area containing signature box
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -82,6 +82,45 @@ def extract_group(page_gray):
 
 
 def extract_signature_region(page_gray):
-    """Crop and return the signature sub-image from the presence photo."""
+    """
+    Find the signature box rectangle in the search area and return its interior.
+    Falls back to the full search area if no rectangle is found.
+    """
+    ph, pw = page_gray.shape
     x, y, w, h = _locate_grid(page_gray, SIGNATURE_REGION)
-    return page_gray[y:y + h, x:x + w]
+    roi = page_gray[y:y + h, x:x + w]
+
+    # Threshold and find contours of large rectangles
+    _, binary = cv2.threshold(roi, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    cnts, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    min_area = (w * h) * 0.05
+    max_area = (w * h) * 0.80
+    best_area = 0
+    best_box  = None
+
+    for cnt in cnts:
+        area = cv2.contourArea(cnt)
+        if not (min_area < area < max_area):
+            continue
+        peri = cv2.arcLength(cnt, True)
+        approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
+        if len(approx) != 4:
+            continue
+        bx, by, bw, bh = cv2.boundingRect(approx)
+        aspect = bw / max(bh, 1)
+        if not (0.8 < aspect < 4.0):
+            continue
+        if area > best_area:
+            best_area = area
+            best_box  = (bx, by, bw, bh)
+
+    if best_box is not None:
+        bx, by, bw, bh = best_box
+        pad = 4
+        interior = roi[max(0, by + pad): by + bh - pad,
+                       max(0, bx + pad): bx + bw - pad]
+        if interior.size > 0:
+            return interior
+
+    return roi
