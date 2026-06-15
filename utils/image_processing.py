@@ -233,7 +233,21 @@ def normalize_signature(sig_gray, target_size=(128, 64)):
 
 
 def image_similarity(img_a, img_b):
-    """Zero-mean NCC between two images. Returns score in [-1, 1]."""
+    """Cosine similarity between two binary images. Returns score in [0, 1].
+    Used for cryptogram comparison."""
+    if img_a.shape != img_b.shape:
+        img_b = cv2.resize(img_b, (img_a.shape[1], img_a.shape[0]),
+                           interpolation=cv2.INTER_AREA)
+    a = img_a.astype(np.float32) / 255.0
+    b = img_b.astype(np.float32) / 255.0
+    num = np.sum(a * b)
+    den = np.sqrt(np.sum(a ** 2) * np.sum(b ** 2))
+    return float(num / den) if den > 1e-8 else 0.0
+
+
+def ncc_similarity(img_a, img_b):
+    """Zero-mean NCC between two images. Returns score in [-1, 1].
+    Used for signature matching."""
     if img_a.shape != img_b.shape:
         img_b = cv2.resize(img_b, (img_a.shape[1], img_a.shape[0]),
                            interpolation=cv2.INTER_AREA)

@@ -7,7 +7,7 @@ with one or more signature images inside.
 from pathlib import Path
 import cv2
 import numpy as np
-from utils.image_processing import load_image, normalize_signature, image_similarity
+from utils.image_processing import load_image, normalize_signature, ncc_similarity
 
 
 SIG_TARGET_SIZE = (128, 64)    # (width, height) of normalized signature
@@ -82,7 +82,7 @@ def match_signature(sig_gray, signatures_dir):
     best_score = -1.0
 
     for student_id, refs in db.items():
-        score = max(image_similarity(query, ref) for ref in refs)
+        score = max(ncc_similarity(query, ref) for ref in refs)
         if score > best_score:
             best_score = score
             best_id = student_id
