@@ -7,21 +7,22 @@ so they stay resolution-independent. Calibrate values against the actual form if
 # Page 1 fields
 
 PAGE1_FIELDS = {
-    # CODES EXAM row — calibrated from actual PDF (y≈0.105 of page height)
-    "module":     (0.08, 0.100, 0.11, 0.020),
-    "professor":  (0.29, 0.100, 0.08, 0.020),
-    "date":       (0.44, 0.100, 0.14, 0.020),
-    "code":       (0.62, 0.100, 0.14, 0.020),
-    # Exam conditions checkboxes — in the "Are authorised" section (y≈0.55)
+    # CODES EXAM row — calibrated from PDF at 250 DPI
+    # Module value "IG.1103" at x_ratio 0.193-0.290, y_ratio 0.108-0.125
+    "module":     (0.193, 0.108, 0.10, 0.017),
+    "professor":  (0.387, 0.108, 0.10, 0.017),
+    "date":       (0.604, 0.108, 0.10, 0.017),
+    "code":       (0.822, 0.108, 0.10, 0.017),
+    # Exam conditions checkboxes — in the "Are authorised" section
     "notes_cours":       (0.04, 0.555, 0.08, 0.030),
     "notes_manuscrites": (0.19, 0.555, 0.08, 0.030),
     "ordinateur":        (0.35, 0.555, 0.08, 0.030),
     "calculatrice":      (0.51, 0.555, 0.08, 0.030),
     "feuilles_brouillon":     (0.66, 0.555, 0.08, 0.030),
     "feuilles_brouillon_nb":  (0.20, 0.585, 0.10, 0.025),
-    # Note maximale / Note pour valider — calibrated (y≈0.775 and 0.815)
-    "note_maximale": (0.45, 0.770, 0.15, 0.040),
-    "note_valider":  (0.45, 0.815, 0.15, 0.040),
+    # Note maximale "10" / Note pour valider "04" — calibrated from PDF
+    "note_maximale": (0.556, 0.700, 0.145, 0.042),
+    "note_valider":  (0.556, 0.742, 0.145, 0.028),
     # row 13 – Prénom (handwritten boxes)
     "prenom": (0.03, 0.155, 0.32, 0.045),
     # row 14 – Nom (handwritten boxes)

@@ -132,7 +132,9 @@ def _find_checkboxes_in_strip(page_gray, y0, y1):
         inner = inv[by + pad: by + bh - pad, bx + pad: bx + bw - pad]
         fill = float(np.sum(inner > 0)) / max(inner.size, 1)
         cy = y_skip + by + bh // 2
-        key = (by // 20,)
+        # Dedup window scales with page height to stay DPI-independent
+        dedup_px = max(10, int(ph * 0.012))
+        key = (by // dedup_px,)
         if key not in best_per_slot or fill > best_per_slot[key][1]:
             best_per_slot[key] = (cy, fill)
 
@@ -140,10 +142,34 @@ def _find_checkboxes_in_strip(page_gray, y0, y1):
     return boxes
 
 
+def _clean_binary_for_ocr(binary_black_on_white):
+    """
+    Remove box borders and small noise from a binary image (black text on white bg).
+    Keeps only large connected components (= digit strokes).
+    """
+    inv = cv2.bitwise_not(binary_black_on_white)  # white text on black
+    h = inv.shape[0]
+    w = inv.shape[1]
+    # Remove long horizontal and vertical lines (box borders)
+    h_kern = cv2.getStructuringElement(cv2.MORPH_RECT, (max(15, w // 4), 1))
+    v_kern = cv2.getStructuringElement(cv2.MORPH_RECT, (1, max(15, h // 4)))
+    borders = cv2.add(cv2.morphologyEx(inv, cv2.MORPH_OPEN, h_kern),
+                      cv2.morphologyEx(inv, cv2.MORPH_OPEN, v_kern))
+    inv_clean = cv2.subtract(inv, borders)
+    # Remove small noise components, keep only digit-sized blobs
+    n_labels, labels, stats, _ = cv2.connectedComponentsWithStats(inv_clean, connectivity=8)
+    min_area = max(20, inv_clean.size // 600)
+    result = np.ones_like(inv_clean) * 255  # white background
+    for i in range(1, n_labels):
+        if stats[i, cv2.CC_STAT_AREA] >= min_area:
+            result[labels == i] = 0  # black digit
+    return result
+
+
 def _read_number_box(page_gray, x, y, w, h, letters=False):
     """OCR a small handwritten-number box. Returns cleaned string. Skips empty boxes."""
     try:
-        import pytesseract
+        import pytesseract, re
     except ImportError:
         return ""
     if w <= 0 or h <= 0:
@@ -152,12 +178,8 @@ def _read_number_box(page_gray, x, y, w, h, letters=False):
     if crop.size == 0:
         return ""
 
-    # Adaptive MEAN threshold with very low C=2 to capture faint handwriting
-    # (handwriting in scanned PDFs can be very light, ~4% dark pixels)
-    block = max(11, (min(crop.shape) // 4) | 1)   # odd block size
-    binary_check = cv2.adaptiveThreshold(
-        crop, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, block, 2)
-    if np.sum(binary_check > 0) / max(binary_check.size, 1) < 0.003:
+    # Quick fill check: truly empty boxes are nearly pure white
+    if crop.mean() > 253.5:
         return ""
 
     # Upscale to ~200px height for reliable Tesseract accuracy
@@ -166,25 +188,22 @@ def _read_number_box(page_gray, x, y, w, h, letters=False):
     crop_up = cv2.resize(crop, (crop.shape[1] * scale, crop.shape[0] * scale),
                          interpolation=cv2.INTER_CUBIC)
 
-    # Adaptive MEAN threshold on upscaled crop
+    # CLAHE to boost faint handwriting contrast, then adaptive MEAN C=2
+    clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(4, 4))
+    crop_enh = clahe.apply(crop_up)
     block_up = max(11, (min(crop_up.shape) // 4) | 1)
     binary = cv2.adaptiveThreshold(
-        crop_up, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV,
-        block_up, 2)
+        crop_enh, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, block_up, 2)
 
-    import re
+    # Remove box borders and noise → clean binary with black text on white
+    binary_clean = _clean_binary_for_ocr(binary)
+
     whitelist = ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
                  if letters else "0123456789.-")
     text = pytesseract.image_to_string(
-        binary, config=f"--psm 7 -c tessedit_char_whitelist={whitelist}").strip()
+        binary_clean, config=f"--psm 7 -c tessedit_char_whitelist={whitelist}").strip()
     if not text:
-        # Fallback: CLAHE to boost faint strokes then adaptive
-        clahe = cv2.createCLAHE(clipLimit=8.0, tileGridSize=(4, 4))
-        crop_cl = clahe.apply(crop_up)
-        block_up2 = max(11, (min(crop_cl.shape) // 4) | 1)
-        binary_otsu = cv2.adaptiveThreshold(
-            crop_cl, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, block_up2, 2)
-        text = pytesseract.image_to_string(binary_otsu, config="--psm 6").strip()
+        text = pytesseract.image_to_string(binary_clean, config="--psm 6").strip()
         text = re.sub(r"[^0-9A-Za-z.\-]", "", text)
     return text
 

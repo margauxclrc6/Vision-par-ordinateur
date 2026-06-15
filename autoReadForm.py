@@ -25,14 +25,14 @@ CHOICE_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 
 
 def _read_field_ocr(page_gray, rel_coords, mode="printed"):
-    """Crop a field and OCR it with better preprocessing."""
+    """Crop a field and OCR it with CLAHE + adaptive threshold for robust reading."""
     crop = crop_field(page_gray, rel_coords)
     if crop.size == 0:
         return ""
 
-    # Upscale for better accuracy
+    # Upscale to at least 60px height for reliable OCR
     h, w = crop.shape
-    scale = max(1, 80 // max(h, 1))
+    scale = max(1, 60 // max(h, 1))
     if scale > 1:
         crop = cv2.resize(crop, (w * scale, h * scale), interpolation=cv2.INTER_CUBIC)
 
@@ -41,22 +41,26 @@ def _read_field_ocr(page_gray, rel_coords, mode="printed"):
     except ImportError:
         return ""
 
-    # Try both polarities and return best
-    _, bin_normal = cv2.threshold(crop, 0, 255,
-                                   cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    _, bin_inv = cv2.threshold(crop, 0, 255,
-                                cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    # CLAHE to handle gray-shaded boxes, then adaptive threshold
+    clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(4, 4))
+    crop_enh = clahe.apply(crop)
+    block = max(11, (min(crop_enh.shape) // 3) | 1)
+    binary = cv2.adaptiveThreshold(crop_enh, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                                    cv2.THRESH_BINARY, block, 3)
 
     if mode == "date":
         cfg = "--psm 7 -c tessedit_char_whitelist=0123456789/"
-        t1 = pytesseract.image_to_string(bin_normal, config=cfg).strip()
-        return t1 if t1 else pytesseract.image_to_string(bin_inv, config=cfg).strip()
+        t = pytesseract.image_to_string(binary, config=cfg).strip()
+        if not t:
+            _, bin_otsu = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            t = pytesseract.image_to_string(bin_otsu, config=cfg).strip()
+        return t
 
-    cfg = "--psm 7"
-    t1 = pytesseract.image_to_string(bin_normal, config=cfg).strip()
-    t2 = pytesseract.image_to_string(bin_inv, config=cfg).strip()
-    # prefer the result with more alphanumeric characters
-    return t1 if len(re.sub(r'\W', '', t1)) >= len(re.sub(r'\W', '', t2)) else t2
+    t = pytesseract.image_to_string(binary, config="--psm 7").strip()
+    if not t:
+        _, bin_otsu = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        t = pytesseract.image_to_string(bin_otsu, config="--psm 7").strip()
+    return t
 
 
 def _checkbox_val(page_gray, rel_coords):
