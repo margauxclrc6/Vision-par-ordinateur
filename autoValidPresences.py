@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import openpyxl
 
-from utils.image_processing import load_image, deskew
+from utils.image_processing import load_image, deskew, correct_perspective
 from utils.grid_reader import extract_student_id, extract_signature_region
 from utils.signature_matcher import match_signature, verify_signature
 
@@ -27,7 +27,13 @@ def _prepare_image(img_gray):
         scale = 2000 / h
         img_gray = cv2.resize(img_gray, (int(w * scale), 2000),
                               interpolation=cv2.INTER_AREA)
-    img_gray, _ = deskew(img_gray)
+
+    # Try perspective correction (flattens camera distortion)
+    corrected, ok = correct_perspective(img_gray)
+    if ok:
+        img_gray = corrected
+    else:
+        img_gray, _ = deskew(img_gray)
     return img_gray
 
 

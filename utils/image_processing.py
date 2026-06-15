@@ -48,6 +48,69 @@ def preprocess(gray):
     return binary
 
 
+def _order_points(pts):
+    """Order 4 corners: top-left, top-right, bottom-right, bottom-left."""
+    rect = np.zeros((4, 2), dtype=np.float32)
+    s = pts.sum(axis=1)
+    rect[0] = pts[np.argmin(s)]
+    rect[2] = pts[np.argmax(s)]
+    diff = np.diff(pts, axis=1).ravel()
+    rect[1] = pts[np.argmin(diff)]
+    rect[3] = pts[np.argmax(diff)]
+    return rect
+
+
+def correct_perspective(img_gray):
+    """
+    Find the A4 document boundary in a camera photo and warp it to a flat view.
+    Uses Canny edge detection + contour approximation + perspective transform.
+    Returns (corrected_img, success: bool).
+    Falls back to original image if no clear quadrilateral is found.
+    """
+    h, w = img_gray.shape
+
+    # 1. Smooth then detect edges (Canny = low-level gradient-based edge detector)
+    blurred = cv2.GaussianBlur(img_gray, (5, 5), 0)
+    edges = cv2.Canny(blurred, 30, 120)
+
+    # 2. Morphological closing to bridge small gaps in the page border
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+
+    # 3. Find contours and keep the largest quadrilateral
+    cnts, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = sorted(cnts, key=cv2.contourArea, reverse=True)
+
+    doc_cnt = None
+    for cnt in cnts[:8]:
+        area = cv2.contourArea(cnt)
+        if area < (w * h) * 0.10:   # must cover at least 10% of frame
+            break
+        peri = cv2.arcLength(cnt, True)
+        approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
+        if len(approx) == 4:
+            doc_cnt = approx
+            break
+
+    if doc_cnt is None:
+        return img_gray, False
+
+    # 4. Order corners and apply perspective transform
+    pts = doc_cnt.reshape(4, 2).astype(np.float32)
+    rect = _order_points(pts)
+
+    # Target: A4 portrait at fixed width
+    tgt_w = min(w, 1200)
+    tgt_h = int(tgt_w * 297 / 210)   # A4 aspect ratio
+    dst = np.array([[0, 0], [tgt_w - 1, 0],
+                    [tgt_w - 1, tgt_h - 1], [0, tgt_h - 1]], dtype=np.float32)
+
+    M = cv2.getPerspectiveTransform(rect, dst)
+    warped = cv2.warpPerspective(img_gray, M, (tgt_w, tgt_h),
+                                 flags=cv2.INTER_LINEAR)
+    return warped, True
+
+
 def deskew(gray):
     """Correct document skew using Hough lines. Returns (deskewed_image, angle_degrees)."""
     binary = preprocess(gray)
