@@ -24,7 +24,7 @@ GROUP_COLS     = 3        # col0=digit, col1=digit, col2=letter A-J
 GROUP_ROWS     = 10
 GROUP_LETTER_COL = 2      # column index that encodes a letter (row 0→A … 9→J)
 
-SIGNATURE_REGION = (0.03, 0.23, 0.31, 0.27)
+SIGNATURE_REGION = (0.17, 0.23, 0.17, 0.12)  # tightened to signature box only
 # ─────────────────────────────────────────────────────────────────────────────
 
 
