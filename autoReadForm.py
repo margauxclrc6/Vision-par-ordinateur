@@ -57,11 +57,15 @@ def _read_field_ocr(page_gray, rel_coords, mode="printed"):
         return t
 
     if mode == "digits":
-        cfg = "--psm 7 -c tessedit_char_whitelist=0123456789"
-        t = pytesseract.image_to_string(binary, config=cfg).strip()
+        # Read without strict whitelist (gray boxes confuse the thresholding),
+        # then correct common OCR digit confusions
+        _digit_map = str.maketrans('oOlI|SsBb', '001115588')
+        t = pytesseract.image_to_string(binary, config="--psm 7").strip()
         if not t:
             _, bin_otsu = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            t = pytesseract.image_to_string(bin_otsu, config=cfg).strip()
+            t = pytesseract.image_to_string(bin_otsu, config="--psm 7").strip()
+        import re as _re
+        t = _re.sub(r'[^0-9oOlISsBb|]', '', t).translate(_digit_map)
         return t
 
     t = pytesseract.image_to_string(binary, config="--psm 7").strip()

@@ -50,8 +50,8 @@ FOOTER_SKIP_RATIO = 0.04      # ignore the bottom 4 % (page number / cryptogram)
 # Numerical answer-box positions (fraction of page width)
 # Calibrated from actual PDF: mantissa box x=[0.128:0.251], unit box x=[0.391:0.516]
 MANT_X, MANT_W = 0.13, 0.12   # student-written value (x=13%→25%)
-EXP_X,  EXP_W  = 0.27, 0.09   # small exponent box right of ".10" label (x=27%→36%)
-UNIT_X, UNIT_W = 0.40, 0.16   # unit box (x=40%→56%)
+EXP_X,  EXP_W  = 0.20, 0.09   # small exponent box above ".10" label (x=20%→29%)
+UNIT_X, UNIT_W = 0.40, 0.15   # unit box (x=40%→55%)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -249,10 +249,14 @@ def parse_exam_page(page_gray, choice_labels=None, page_idx=0, debug_dir=None):
             # Answer boxes sit in the very bottom of the block (~last 25%)
             box_h  = max(30, int((y1 - y0) * 0.25))
             by_num = max(0, y1 - box_h - 3)
+            # Exponent box is printed ABOVE the ".10" label, roughly one box-height
+            # above the mantissa row
+            exp_h  = max(20, int((y1 - y0) * 0.14))
+            by_exp = max(0, by_num - exp_h - 4)
             row["MANTISSE"] = _read_number_box(page_gray, int(MANT_X * pw), by_num,
                                                int(MANT_W * pw), box_h)
-            row["EXPOSANT"] = _read_number_box(page_gray, int(EXP_X * pw), by_num,
-                                               int(EXP_W * pw), box_h)
+            row["EXPOSANT"] = _read_number_box(page_gray, int(EXP_X * pw), by_exp,
+                                               int(EXP_W * pw), exp_h)
             row["UNITE"]    = _read_number_box(page_gray, int(UNIT_X * pw), by_num,
                                                int(UNIT_W * pw), box_h, letters=True)
             debug_items.append((y0, y1, checkboxes, None, "num"))
