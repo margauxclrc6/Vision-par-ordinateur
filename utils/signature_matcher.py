@@ -113,8 +113,10 @@ def match_signature(sig_gray, signatures_dir):
     return best_id, best_score
 
 
-# Default operating threshold (optimised on the validation set, see evaluate.py).
-VERIFY_THRESHOLD = 0.47   # 1:1 verification is easier than 1:N identification
+# Default operating threshold, optimised on the validation set via the strict
+# train/validation/test protocol in optimize_threshold.py (balanced accuracy of
+# genuine-accept vs impostor-reject). Train & validation optima both gave 0.64.
+VERIFY_THRESHOLD = 0.64
 
 
 def signature_score(sig_gray, student_id, signatures_dir):
