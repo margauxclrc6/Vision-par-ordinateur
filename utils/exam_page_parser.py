@@ -219,8 +219,8 @@ def parse_exam_page(page_gray, choice_labels=None, page_idx=0, debug_dir=None):
             debug_items.append((y0, y1, checkboxes, marked, "mcq"))
         else:
             # ── Numerical question ──
-            # Answer boxes sit in the very bottom of the block (~last 18%)
-            box_h  = max(25, int((y1 - y0) * 0.18))
+            # Answer boxes sit in the very bottom of the block (~last 25%)
+            box_h  = max(30, int((y1 - y0) * 0.25))
             by_num = max(0, y1 - box_h - 3)
             row["MANTISSE"] = _read_number_box(page_gray, int(MANT_X * pw), by_num,
                                                int(MANT_W * pw), box_h)
@@ -265,6 +265,25 @@ def _save_debug(page_gray, debug_items, debug_dir, page_idx):
         if kind == "num":
             cv2.putText(vis, "NUM", (x0, y0 + 18),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 0, 200), 2)
+            # Draw the numerical answer box region
+            box_h  = max(30, int((y1 - y0) * 0.25))
+            by_num = max(0, y1 - box_h - 3)
+            cv2.rectangle(vis,
+                          (int(MANT_X * pw), by_num),
+                          (int((MANT_X + MANT_W) * pw), by_num + box_h),
+                          (0, 200, 255), 2)
 
     out = os.path.join(debug_dir, f"page_{page_idx:02d}_blocks.png")
     cv2.imwrite(out, vis)
+    # Also save individual num-box crops for calibration
+    num_q = 0
+    for (y0, y1, checkboxes, marked, kind) in debug_items:
+        if kind == "num":
+            box_h  = max(30, int((y1 - y0) * 0.25))
+            by_num = max(0, y1 - box_h - 3)
+            mx = int(MANT_X * pw)
+            mw = int(MANT_W * pw)
+            crop = page_gray[by_num:by_num + box_h, mx:mx + mw]
+            cv2.imwrite(os.path.join(debug_dir,
+                        f"page_{page_idx:02d}_numQ{num_q}_mantissa.png"), crop)
+            num_q += 1
