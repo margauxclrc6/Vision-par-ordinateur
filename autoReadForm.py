@@ -104,14 +104,6 @@ def _read_field_ocr(page_gray, rel_coords, mode="printed"):
             up = cv2.resize(med, (med.shape[1] * 3, med.shape[0] * 3),
                             interpolation=cv2.INTER_CUBIC)
             _, b = cv2.threshold(up, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            # Strip long straight box-border lines that confuse Tesseract
-            uh, uw = b.shape
-            ink = cv2.bitwise_not(b)
-            h_kern = cv2.getStructuringElement(cv2.MORPH_RECT, (max(15, uw // 3), 1))
-            v_kern = cv2.getStructuringElement(cv2.MORPH_RECT, (1, max(15, uh // 3)))
-            lines = cv2.add(cv2.morphologyEx(ink, cv2.MORPH_OPEN, h_kern),
-                            cv2.morphologyEx(ink, cv2.MORPH_OPEN, v_kern))
-            b = cv2.bitwise_not(cv2.subtract(ink, lines))
             for cfg in cfgs:
                 t = re.sub(r'[^0-9]', '', pytesseract.image_to_string(b, config=cfg).strip())
                 if t:

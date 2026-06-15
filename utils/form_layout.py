@@ -20,8 +20,9 @@ PAGE1_FIELDS = {
     "calculatrice":      (0.51, 0.555, 0.08, 0.030),
     "feuilles_brouillon":     (0.66, 0.555, 0.08, 0.030),
     "feuilles_brouillon_nb":  (0.20, 0.585, 0.10, 0.025),
-    # Note maximale "10" / Note pour valider "04" — calibrated from PDF
-    "note_maximale": (0.556, 0.700, 0.145, 0.042),
+    # Note maximale "10" / Note pour valider "04" — calibrated from PDF.
+    # maximale height tightened to exclude the box's bottom border line.
+    "note_maximale": (0.556, 0.702, 0.145, 0.030),
     "note_valider":  (0.556, 0.742, 0.145, 0.028),
     # row 13 – Prénom (handwritten boxes)
     "prenom": (0.03, 0.155, 0.32, 0.045),
