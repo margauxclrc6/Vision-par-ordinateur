@@ -12,7 +12,7 @@ from utils.pdf_utils import pdf_to_images
 from utils.image_processing import deskew, preprocess
 from utils.grid_reader import (extract_student_id, extract_group,
                                 extract_signature_region)
-from utils.signature_matcher import match_signature
+from utils.signature_matcher import match_signature, verify_signature
 from utils.cryptogram import validate_cryptograms, extract_cryptogram
 from utils.ocr_reader import read_printed_field, read_printed_date
 from utils.checkbox_reader import is_checked
@@ -171,14 +171,21 @@ def _parse_page1(page_gray, signatures_dir):
     data["Prénom"] = _read_field_ocr(page_gray, PAGE1_FIELDS["prenom"], mode="handwriting")
     data["Nom"]    = _read_field_ocr(page_gray, PAGE1_FIELDS["nom"],    mode="handwriting")
 
+    data["Group"]      = extract_group(page_gray)
+    data["STUDENT ID"] = extract_student_id(page_gray)
+
+    # Signature authentication: verify (1:1) against the grid-read student ID,
+    # which is reliable on scanned PDFs. Fall back to 1:N if the grid is unreadable.
     sig_gray = extract_signature_region(page_gray)
-    student_id_sig, sig_score = match_signature(sig_gray, signatures_dir)
+    student_id = data["STUDENT ID"]
+    if student_id and "?" not in student_id:
+        verified, sig_score = verify_signature(sig_gray, student_id, signatures_dir)
+        student_id_sig = student_id if verified else None
+    else:
+        student_id_sig, sig_score = match_signature(sig_gray, signatures_dir)
     data["Validation signature"] = 1 if student_id_sig else 0
     data["_signature_id"]    = student_id_sig or ""
     data["_signature_score"] = sig_score
-
-    data["Group"]      = extract_group(page_gray)
-    data["STUDENT ID"] = extract_student_id(page_gray)
 
     return data
 
