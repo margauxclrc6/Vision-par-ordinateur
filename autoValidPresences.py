@@ -30,11 +30,10 @@ def _prepare_image(img_gray):
 
     img_gray, _ = deskew(img_gray)
 
-    # Perspective correction: map L-bracket marks to canonical PDF coordinates
-    corrected, ok = correct_perspective(img_gray)
-    if ok:
-        img_gray = corrected
-
+    # NB: an L-bracket perspective correction was explored (see
+    # utils.image_processing.correct_perspective) but, on these fairly frontal
+    # camera photos, the deskew already removes most distortion and the warp did
+    # not improve grid accuracy on the validation set, so it is left disabled.
     return img_gray
 
 
