@@ -56,6 +56,14 @@ def _read_field_ocr(page_gray, rel_coords, mode="printed"):
             t = pytesseract.image_to_string(bin_otsu, config=cfg).strip()
         return t
 
+    if mode == "digits":
+        cfg = "--psm 7 -c tessedit_char_whitelist=0123456789"
+        t = pytesseract.image_to_string(binary, config=cfg).strip()
+        if not t:
+            _, bin_otsu = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            t = pytesseract.image_to_string(bin_otsu, config=cfg).strip()
+        return t
+
     t = pytesseract.image_to_string(binary, config="--psm 7").strip()
     if not t:
         _, bin_otsu = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -89,8 +97,8 @@ def _parse_page1(page_gray, signatures_dir):
     data["Calculatrice"]        = _checkbox_val(page_gray, PAGE1_FIELDS["calculatrice"])
     data["Feuilles brouillon"]  = _checkbox_val(page_gray, PAGE1_FIELDS["feuilles_brouillon"])
 
-    data["Note maximale"]     = _read_field_ocr(page_gray, PAGE1_FIELDS["note_maximale"])
-    data["Note pour valider"] = _read_field_ocr(page_gray, PAGE1_FIELDS["note_valider"])
+    data["Note maximale"]     = _read_field_ocr(page_gray, PAGE1_FIELDS["note_maximale"], mode="digits")
+    data["Note pour valider"] = _read_field_ocr(page_gray, PAGE1_FIELDS["note_valider"], mode="digits")
 
     sig_gray = extract_signature_region(page_gray)
     student_id_sig, sig_score = match_signature(sig_gray, signatures_dir)
