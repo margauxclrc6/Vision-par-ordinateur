@@ -1,44 +1,56 @@
 """
-Matches a signature against the class database using normalized cross-correlation.
-The database directory should contain one image per student named <studentID>.<ext>.
+Matches a signature against the class database using zero-mean NCC.
+The database directory contains one folder per student named <studentID>,
+with one or more signature images inside.
 """
 
-import os
+from pathlib import Path
 import cv2
 import numpy as np
-from pathlib import Path
-from utils.image_processing import normalize_signature, image_similarity
+from utils.image_processing import load_image, normalize_signature, image_similarity
 
 
 SIG_TARGET_SIZE = (128, 64)    # (width, height) of normalized signature
-MATCH_THRESHOLD = 0.15         # minimum NCC to accept a match
-SUPPORTED_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif"}
+
+# With zero-mean NCC, a real match typically scores > 0.35.
+# Set conservatively so unrecognized signatures return None (column C empty)
+# rather than a wrong ID.
+MATCH_THRESHOLD = 0.35
+
+SUPPORTED_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif",
+                 ".heic", ".heif", ".webp"}
 
 
 def _load_database(signatures_dir):
     """
-    Load reference signatures recursively. Supports nested structure:
-      signatures_dir/
-        <studentID>/          ← folder named by student ID (numeric)
-          <studentID>_000.png
-          ...
-        <scan_folder>/        ← any named folder
-          <studentID>/
-            ...
+    Load all reference signatures, recursively.
+    Supports:
+      signatures_dir/<studentID>/<any_name>.jpg   (nested structure)
+      signatures_dir/<studentID>.jpg              (flat structure)
     Returns {student_id: [normalized_img, ...]}
     """
     db = {}
 
+    def _add(path, student_id):
+        try:
+            _, img = load_image(path)   # uses full fallback including HEIC
+        except Exception:
+            return
+        norm = normalize_signature(img, SIG_TARGET_SIZE)
+        if np.sum(norm) > 0:
+            db.setdefault(student_id, []).append(norm)
+
     def _walk(folder, current_id):
-        for item in Path(folder).iterdir():
+        for item in sorted(Path(folder).iterdir()):
             if item.is_dir():
+                # Directory name = student ID if numeric
                 sid = item.name if item.name.isdigit() else current_id
                 _walk(item, sid)
-            elif item.suffix.lower() in SUPPORTED_EXT and current_id:
-                img = cv2.imread(str(item), cv2.IMREAD_GRAYSCALE)
-                if img is not None:
-                    norm = normalize_signature(img, SIG_TARGET_SIZE)
-                    db.setdefault(current_id, []).append(norm)
+            elif item.suffix.lower() in SUPPORTED_EXT:
+                # Flat structure: filename without extension = student ID
+                sid = current_id or item.stem
+                if sid:
+                    _add(item, sid)
 
     _walk(signatures_dir, None)
     return db
@@ -50,18 +62,21 @@ _db_cache = {}   # {str(signatures_dir): db}
 def match_signature(sig_gray, signatures_dir):
     """
     Identify a signature against the class database.
-    Returns (best_id, best_score) — best_id is None if no match exceeds threshold.
-    Compares the query against all samples per student and takes the max score.
-    DB is cached per directory to avoid reloading for every call.
+    Returns (best_id, best_score).
+    best_id is None if score < MATCH_THRESHOLD (signature not recognised).
+    DB is cached per directory.
     """
     key = str(signatures_dir)
     if key not in _db_cache:
         _db_cache[key] = _load_database(signatures_dir)
     db = _db_cache[key]
+
     if not db:
         return None, 0.0
 
     query = normalize_signature(sig_gray, SIG_TARGET_SIZE)
+    if np.sum(query) == 0:
+        return None, 0.0
 
     best_id = None
     best_score = -1.0

@@ -207,24 +207,40 @@ def crop_region(img, x, y, w, h):
 
 
 def normalize_signature(sig_gray, target_size=(128, 64)):
-    """Binarize, crop to bounding box, then resize to target_size."""
-    _, binary = cv2.threshold(sig_gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    """
+    Normalize a signature image for matching.
+    Uses adaptive thresholding (robust to camera lighting) + tight crop + resize.
+    """
+    # Adaptive threshold handles uneven illumination from phone photos
+    binary = cv2.adaptiveThreshold(
+        sig_gray, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV,
+        blockSize=25, C=10)
+    # Remove salt & pepper noise
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+
     coords = cv2.findNonZero(binary)
     if coords is None:
-        return np.zeros(target_size[::-1], dtype=np.uint8)
+        return np.zeros((target_size[1], target_size[0]), dtype=np.uint8)
     x, y, w, h = cv2.boundingRect(coords)
-    cropped = binary[y:y+h, x:x+w]
-    resized = cv2.resize(cropped, target_size, interpolation=cv2.INTER_AREA)
-    return resized
+    pad = 4
+    x, y = max(0, x - pad), max(0, y - pad)
+    w = min(binary.shape[1] - x, w + 2 * pad)
+    h = min(binary.shape[0] - y, h + 2 * pad)
+    cropped = binary[y:y + h, x:x + w]
+    return cv2.resize(cropped, target_size, interpolation=cv2.INTER_AREA)
 
 
 def image_similarity(img_a, img_b):
-    """Normalized cross-correlation between two binary images. Returns score in [0, 1]."""
+    """Zero-mean NCC between two images. Returns score in [-1, 1]."""
     if img_a.shape != img_b.shape:
         img_b = cv2.resize(img_b, (img_a.shape[1], img_a.shape[0]),
                            interpolation=cv2.INTER_AREA)
-    a = img_a.astype(np.float32) / 255.0
-    b = img_b.astype(np.float32) / 255.0
+    a = img_a.astype(np.float32)
+    b = img_b.astype(np.float32)
+    a -= a.mean()
+    b -= b.mean()
     num = np.sum(a * b)
-    den = np.sqrt(np.sum(a**2) * np.sum(b**2))
+    den = np.sqrt(np.sum(a ** 2) * np.sum(b ** 2))
     return float(num / den) if den > 1e-8 else 0.0
