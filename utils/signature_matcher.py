@@ -39,8 +39,8 @@ def _sig_score_moments(a, b):
 
 def _sig_score_projection(a, b):
     def profiles(img):
-        ph = np.sum(img == 0, axis=1).astype(np.float32)
-        pv = np.sum(img == 0, axis=0).astype(np.float32)
+        ph = np.sum(img > 0, axis=1).astype(np.float32)
+        pv = np.sum(img > 0, axis=0).astype(np.float32)
         ph /= ph.max() + 1e-6
         pv /= pv.max() + 1e-6
         return np.concatenate([ph, pv])
