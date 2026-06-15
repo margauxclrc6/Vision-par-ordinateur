@@ -48,10 +48,10 @@ HEADER_SKIP_RATIO = 0.08      # ignore the top 8 % (page header band)
 FOOTER_SKIP_RATIO = 0.04      # ignore the bottom 4 % (page number / cryptogram)
 
 # Numerical answer-box positions (fraction of page width)
-# One student-fill rectangle (value) at far left; unit label pre-printed on right
-MANT_X, MANT_W = 0.03, 0.16   # the student-written value box
-EXP_X,  EXP_W  = 0.16, 0.08   # small exponent box (above mantissa row)
-UNIT_X, UNIT_W = 0.30, 0.22   # pre-printed unit label box
+# Layout: [mantissa box] × .10 [unit box]
+MANT_X, MANT_W = 0.03, 0.13   # student-written value (x=3%→16%)
+EXP_X,  EXP_W  = 0.17, 0.07   # small exponent box   (x=17%→24%)
+UNIT_X, UNIT_W = 0.30, 0.22   # pre-printed unit label (x=30%→52%)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -209,8 +209,9 @@ def parse_exam_page(page_gray, choice_labels=None, page_idx=0, debug_dir=None):
             debug_items.append((y0, y1, checkboxes, marked, "mcq"))
         else:
             # ── Numerical question ──
-            box_h  = max(30, int((y1 - y0) * 0.28))
-            by_num = max(0, y1 - box_h - 5)
+            # Answer boxes sit in the very bottom of the block (~last 18%)
+            box_h  = max(25, int((y1 - y0) * 0.18))
+            by_num = max(0, y1 - box_h - 3)
             row["MANTISSE"] = _read_number_box(page_gray, int(MANT_X * pw), by_num,
                                                int(MANT_W * pw), box_h)
             row["EXPOSANT"] = _read_number_box(page_gray, int(EXP_X * pw), by_num,
