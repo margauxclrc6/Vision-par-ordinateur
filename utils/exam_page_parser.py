@@ -50,8 +50,8 @@ FOOTER_SKIP_RATIO = 0.04      # ignore the bottom 4 % (page number / cryptogram)
 # Numerical answer-box positions (fraction of page width)
 # Calibrated from actual PDF: mantissa box x=[0.128:0.251], unit box x=[0.391:0.516]
 MANT_X, MANT_W = 0.13, 0.12   # student-written value (x=13%→25%)
-EXP_X,  EXP_W  = 0.26, 0.07   # exponent area after ×10 label (x=26%→33%)
-UNIT_X, UNIT_W = 0.38, 0.14   # unit box (x=38%→52%)
+EXP_X,  EXP_W  = 0.27, 0.09   # small exponent box right of ".10" label (x=27%→36%)
+UNIT_X, UNIT_W = 0.40, 0.16   # unit box (x=40%→56%)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -178,8 +178,12 @@ def _read_number_box(page_gray, x, y, w, h, letters=False):
     if crop.size == 0:
         return ""
 
-    # Quick fill check: truly empty boxes are nearly pure white
-    if crop.mean() > 253.5:
+    # Quick fill check: empty boxes have very few dark pixels after cleaning borders
+    if crop.mean() > 250:
+        return ""
+    # Also skip if dark-pixel ratio is extremely low (border shadows only)
+    dark_ratio = float(np.sum(crop < 180)) / max(crop.size, 1)
+    if dark_ratio < 0.005:
         return ""
 
     # Upscale to ~200px height for reliable Tesseract accuracy
