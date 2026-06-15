@@ -7,34 +7,31 @@ so they stay resolution-independent. Calibrate values against the actual form if
 # Page 1 fields
 
 PAGE1_FIELDS = {
-    # CODES EXAM row — calibrated from PDF at 250 DPI
-    # Module value "IG.1103" at x_ratio 0.193-0.290, y_ratio 0.108-0.125
-    "module":     (0.193, 0.108, 0.10, 0.017),
-    "professor":  (0.387, 0.108, 0.10, 0.017),
-    "date":       (0.604, 0.108, 0.10, 0.017),
-    "code":       (0.822, 0.108, 0.10, 0.017),
-    # Exam conditions checkboxes — in the "Are authorised" section
+    # CODES EXAM row — converted from reference canvas (2483×3510 px)
+    "module":     (0.161, 0.091, 0.090, 0.015),
+    "professor":  (0.390, 0.091, 0.090, 0.015),
+    "date":       (0.621, 0.091, 0.093, 0.015),
+    "code":       (0.848, 0.091, 0.090, 0.015),
+    # Exam conditions checkboxes
     "notes_cours":       (0.04, 0.555, 0.08, 0.030),
     "notes_manuscrites": (0.19, 0.555, 0.08, 0.030),
     "ordinateur":        (0.35, 0.555, 0.08, 0.030),
     "calculatrice":      (0.51, 0.555, 0.08, 0.030),
     "feuilles_brouillon":     (0.66, 0.555, 0.08, 0.030),
     "feuilles_brouillon_nb":  (0.20, 0.585, 0.10, 0.025),
-    # Note maximale "10" / Note pour valider "04" — calibrated from PDF
-    "note_maximale": (0.556, 0.700, 0.145, 0.042),
-    "note_valider":  (0.556, 0.742, 0.145, 0.028),
-    # row 13 – Prénom (handwritten boxes)
+    # Note maximale / Note pour valider — converted from reference canvas
+    "note_maximale": (0.545, 0.709, 0.121, 0.044),
+    "note_valider":  (0.545, 0.757, 0.121, 0.044),
+    # Prénom / Nom (handwritten boxes)
     "prenom": (0.03, 0.155, 0.32, 0.045),
-    # row 14 – Nom (handwritten boxes)
     "nom":    (0.03, 0.215, 0.32, 0.045),
-    # row 15 – Signature zone
-    "signature": (0.03, 0.255, 0.30, 0.245),
-    # row 16 – Group (from bubble grid)
-    "group":     (0.37, 0.19, 0.24, 0.36),
-    # row 17 – StudentID (from bubble grid)
+    # Signature zone — converted from reference canvas (258,984,736,422)
+    "signature": (0.104, 0.280, 0.296, 0.120),
+    # Group / StudentID — handled by grid_reader
+    "group":      (0.37, 0.19, 0.24, 0.36),
     "student_id": (0.75, 0.19, 0.22, 0.36),
-    # row 18 – Cryptogram (bottom left)
-    "cryptogram": (0.08, 0.935, 0.10, 0.05),
+    # Cryptogram — converted from reference canvas (598,3378,98,98)
+    "cryptogram": (0.241, 0.962, 0.039, 0.028),
 }
 
 # Exam page fields
