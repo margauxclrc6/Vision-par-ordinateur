@@ -113,13 +113,16 @@ def match_signature(sig_gray, signatures_dir):
     return best_id, best_score
 
 
+# Default operating threshold (optimised on the validation set, see evaluate.py).
 VERIFY_THRESHOLD = 0.47   # 1:1 verification is easier than 1:N identification
 
 
-def verify_signature(sig_gray, student_id, signatures_dir):
+def signature_score(sig_gray, student_id, signatures_dir):
     """
-    Verify that sig_gray belongs to student_id.
-    Returns (matched: bool, score: float).
+    Raw similarity score between a query signature and the references of
+    student_id (max over that student's reference signatures).
+    Returns 0.0 if the student is unknown or the query is empty.
+    Used by the evaluation harness to sweep the decision threshold.
     """
     key = str(signatures_dir)
     if key not in _db_cache:
@@ -128,11 +131,23 @@ def verify_signature(sig_gray, student_id, signatures_dir):
 
     refs = db.get(str(student_id), [])
     if not refs:
-        return False, 0.0
+        return 0.0
 
     query = normalize_signature(sig_gray, SIG_TARGET_SIZE)
     if np.sum(query) == 0:
-        return False, 0.0
+        return 0.0
 
-    score = max(_compare_signatures(query, ref) for ref in refs)
-    return score >= VERIFY_THRESHOLD, score
+    return max(_compare_signatures(query, ref) for ref in refs)
+
+
+def verify_signature(sig_gray, student_id, signatures_dir, threshold=None):
+    """
+    Verify that sig_gray belongs to student_id (1:1 authentication).
+    The decision threshold defaults to VERIFY_THRESHOLD but can be overridden
+    (e.g. with a value optimised on a validation set).
+    Returns (matched: bool, score: float).
+    """
+    if threshold is None:
+        threshold = VERIFY_THRESHOLD
+    score = signature_score(sig_gray, student_id, signatures_dir)
+    return score >= threshold, score
