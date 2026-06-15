@@ -24,22 +24,30 @@ from utils.exam_page_parser import parse_exam_page
 CHOICE_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 
 
+def _strip_ocr_noise(text):
+    """Remove trailing punctuation and whitespace from OCR output."""
+    return re.sub(r'[\s|:.,;]+$', '', text.strip())
+
+
 def _fix_module(text):
     """Fix OCR errors in module code (format LL.DDDD, e.g. IG.1103)."""
-    text = re.sub(r'[\s|]+$', '', text.strip())
+    text = _strip_ocr_noise(text)
     d2l = {'1': 'I', '6': 'G', '0': 'O', '5': 'S', '8': 'B', '3': 'E', '4': 'A'}
     if len(text) >= 2:
         chars = list(text)
         for i in (0, 1):
             if chars[i].isdigit():
                 chars[i] = d2l.get(chars[i], chars[i])
+        # Fix separator: position 2 should be '.'
+        if len(chars) >= 3 and chars[2] in ('-', ',', ';', '_', ' '):
+            chars[2] = '.'
         text = ''.join(chars)
     return text
 
 
 def _fix_code(text):
     """Fix OCR errors in exam code (format LN-NN-LN, e.g. S1-01-G1)."""
-    text = re.sub(r'[\s|]+$', '', text.strip())
+    text = _strip_ocr_noise(text)
     d2l = {'3': 'S', '5': 'S', '6': 'G', '0': 'O', '1': 'I', '8': 'B'}
     if len(text) >= 1 and text[0].isdigit():
         text = d2l.get(text[0], text[0]) + text[1:]
@@ -81,25 +89,35 @@ def _read_field_ocr(page_gray, rel_coords, mode="printed"):
         return t
 
     if mode == "digits":
-        # Gray-shaded boxes: fixed threshold at 180 works better than adaptive
-        _, bin_fixed = cv2.threshold(crop, 180, 255, cv2.THRESH_BINARY)
+        # Gray-shaded boxes: try multiple thresholds to find the digits
         cfg = "--psm 7 -c tessedit_char_whitelist=0123456789"
-        t = pytesseract.image_to_string(bin_fixed, config=cfg).strip()
-        if not t:
-            _, bin_otsu = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            t = pytesseract.image_to_string(bin_otsu, config=cfg).strip()
-        if not t:
-            t = pytesseract.image_to_string(binary, config=cfg).strip()
+        for thr in (150, 170, 130):
+            _, bin_t = cv2.threshold(crop, thr, 255, cv2.THRESH_BINARY)
+            t = pytesseract.image_to_string(bin_t, config=cfg).strip()
+            t = re.sub(r'[^0-9]', '', t)
+            if t:
+                return t
+        _, bin_otsu = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        t = pytesseract.image_to_string(bin_otsu, config=cfg).strip()
         return re.sub(r'[^0-9]', '', t)
 
     if mode == "handwriting":
-        # Handwritten text: larger block for adaptive threshold, no whitelist
-        block2 = max(15, (min(crop_enh.shape) // 2) | 1)
-        bin2 = cv2.adaptiveThreshold(crop_enh, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                      cv2.THRESH_BINARY, block2, 5)
-        t = pytesseract.image_to_string(bin2, config="--psm 6").strip()
+        # Remove vertical box borders then OCR the remaining letter strokes
+        inv = cv2.bitwise_not(crop_enh)
+        v_kern = cv2.getStructuringElement(cv2.MORPH_RECT,
+                                           (1, max(10, crop_enh.shape[0] // 3)))
+        vlines = cv2.morphologyEx(inv, cv2.MORPH_OPEN, v_kern)
+        inv_clean = cv2.subtract(inv, vlines)
+        h_kern = cv2.getStructuringElement(cv2.MORPH_RECT,
+                                           (max(10, crop_enh.shape[1] // 6), 1))
+        hlines = cv2.morphologyEx(inv_clean, cv2.MORPH_OPEN, h_kern)
+        inv_clean = cv2.subtract(inv_clean, hlines)
+        cleaned = cv2.bitwise_not(inv_clean)
+        t = pytesseract.image_to_string(cleaned, config="--psm 6").strip()
         if not t:
             t = pytesseract.image_to_string(binary, config="--psm 6").strip()
+        # Remove box-artifact characters
+        t = re.sub(r'[|_\[\]{}]', '', t).strip()
         return t
 
     t = pytesseract.image_to_string(binary, config="--psm 7").strip()
@@ -125,7 +143,7 @@ def _parse_page1(page_gray, signatures_dir):
     data = {}
 
     data["Module"]    = _fix_module(_read_field_ocr(page_gray, PAGE1_FIELDS["module"]))
-    data["Professor"] = _read_field_ocr(page_gray, PAGE1_FIELDS["professor"])
+    data["Professor"] = _strip_ocr_noise(_read_field_ocr(page_gray, PAGE1_FIELDS["professor"]))
     data["Date"]      = _read_field_ocr(page_gray, PAGE1_FIELDS["date"], mode="date")
     data["Code"]      = _fix_code(_read_field_ocr(page_gray, PAGE1_FIELDS["code"]))
 
