@@ -113,7 +113,7 @@ def match_signature(sig_gray, signatures_dir):
     return best_id, best_score
 
 
-VERIFY_THRESHOLD = 0.50   # 1:1 verification is easier than 1:N identification
+VERIFY_THRESHOLD = 0.47   # 1:1 verification is easier than 1:N identification
 
 
 def verify_signature(sig_gray, student_id, signatures_dir):
