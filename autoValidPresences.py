@@ -28,12 +28,7 @@ def _prepare_image(img_gray):
         img_gray = cv2.resize(img_gray, (int(w * scale), 2000),
                               interpolation=cv2.INTER_AREA)
 
-    # Try perspective correction using L-bracket corner marks
-    corrected, ok = correct_perspective(img_gray)
-    if ok:
-        img_gray = corrected
-    else:
-        img_gray, _ = deskew(img_gray)
+    img_gray, _ = deskew(img_gray)
     return img_gray
 
 
