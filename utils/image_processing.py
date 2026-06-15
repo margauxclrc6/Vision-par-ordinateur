@@ -63,51 +63,53 @@ def _order_points(pts):
 def correct_perspective(img_gray):
     """
     Find the A4 document boundary in a camera photo and warp it to a flat view.
-    Uses Canny edge detection + contour approximation + perspective transform.
+    Strategy: threshold to isolate the white paper (bright region) from darker background,
+    then find the largest quadrilateral contour and apply warpPerspective.
     Returns (corrected_img, success: bool).
-    Falls back to original image if no clear quadrilateral is found.
     """
     h, w = img_gray.shape
 
-    # 1. Smooth then detect edges (Canny = low-level gradient-based edge detector)
-    blurred = cv2.GaussianBlur(img_gray, (5, 5), 0)
-    edges = cv2.Canny(blurred, 30, 120)
+    # 1. Threshold to isolate bright (white paper) from darker surroundings.
+    # Use Otsu on a blurred image so small print doesn't dominate.
+    blurred = cv2.GaussianBlur(img_gray, (9, 9), 0)
+    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    # 2. Morphological closing to bridge small gaps in the page border
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-    edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+    # 2. Morphological closing to fill holes from printed text/lines inside the page
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+    closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
 
-    # 3. Find contours and keep the largest quadrilateral
-    cnts, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cnts = sorted(cnts, key=cv2.contourArea, reverse=True)
+    # 3. Find the largest external contour (= page boundary)
+    cnts, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return img_gray, False
+    largest = max(cnts, key=cv2.contourArea)
 
-    doc_cnt = None
-    for cnt in cnts[:8]:
-        area = cv2.contourArea(cnt)
-        if area < (w * h) * 0.10:   # must cover at least 10% of frame
-            break
-        peri = cv2.arcLength(cnt, True)
-        approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
-        if len(approx) == 4:
-            doc_cnt = approx
-            break
-
-    if doc_cnt is None:
+    # Must cover at least 20% of the frame to be the page
+    if cv2.contourArea(largest) < (w * h) * 0.20:
         return img_gray, False
 
-    # 4. Order corners and apply perspective transform
-    pts = doc_cnt.reshape(4, 2).astype(np.float32)
+    # 4. Approximate as quadrilateral
+    peri = cv2.arcLength(largest, True)
+    approx = cv2.approxPolyDP(largest, 0.02 * peri, True)
+    if len(approx) != 4:
+        # Try looser approximation
+        approx = cv2.approxPolyDP(largest, 0.05 * peri, True)
+    if len(approx) != 4:
+        return img_gray, False
+
+    # 5. Order corners and apply perspective transform
+    pts = approx.reshape(4, 2).astype(np.float32)
     rect = _order_points(pts)
 
-    # Target: A4 portrait at fixed width
     tgt_w = min(w, 1200)
-    tgt_h = int(tgt_w * 297 / 210)   # A4 aspect ratio
+    tgt_h = int(tgt_w * 297 / 210)   # A4 portrait ratio
     dst = np.array([[0, 0], [tgt_w - 1, 0],
                     [tgt_w - 1, tgt_h - 1], [0, tgt_h - 1]], dtype=np.float32)
 
     M = cv2.getPerspectiveTransform(rect, dst)
     warped = cv2.warpPerspective(img_gray, M, (tgt_w, tgt_h),
-                                 flags=cv2.INTER_LINEAR)
+                                 flags=cv2.INTER_LINEAR,
+                                 borderMode=cv2.BORDER_REPLICATE)
     return warped, True
 
 
