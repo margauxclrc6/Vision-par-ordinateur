@@ -19,10 +19,9 @@ STUDENT_ID_REGION = (0.73, 0.18, 0.24, 0.38)   # 5-digit ID: 5 cols × 10 rows
 STUDENT_ID_DIGITS = 5
 STUDENT_ID_ROWS   = 10   # rows 0-9
 
-GROUP_REGION   = (0.35, 0.18, 0.26, 0.38)
-GROUP_COLS     = 3        # col0=digit, col1=digit, col2=letter A-J
+GROUP_DIGITS_REGION = (0.50, 0.18, 0.09, 0.38)   # 2 digit columns (e.g. 7,8)
+GROUP_LETTER_REGION = (0.615, 0.18, 0.06, 0.38)  # 1 letter column (A-J)
 GROUP_ROWS     = 10
-GROUP_LETTER_COL = 2      # column index that encodes a letter (row 0→A … 9→J)
 
 SIGNATURE_REGION = (0.02, 0.17, 0.85, 0.42)  # search area containing signature box
 # ─────────────────────────────────────────────────────────────────────────────
@@ -73,12 +72,22 @@ def extract_student_id(page_gray):
 def extract_group(page_gray):
     """
     Extract the group code (e.g. '78H') from its bubble grid.
+    The grid has 2 digit columns and a separate letter column (A-J), with an
+    unequal gap between them, so each part is read from its own region.
     """
     binary = preprocess(page_gray)
-    x, y, w, h = _locate_grid(page_gray, GROUP_REGION)
-    grid = detect_grid_cells(binary, GROUP_ROWS, GROUP_COLS,
-                             region=(x, y, w, h))
-    return _grid_to_string(grid, GROUP_COLS, letter_col=GROUP_LETTER_COL)
+
+    # Two digit columns
+    xd, yd, wd, hd = _locate_grid(page_gray, GROUP_DIGITS_REGION)
+    digit_grid = detect_grid_cells(binary, GROUP_ROWS, 2, region=(xd, yd, wd, hd))
+    digits = _grid_to_string(digit_grid, 2)
+
+    # One letter column
+    xl, yl, wl, hl = _locate_grid(page_gray, GROUP_LETTER_REGION)
+    letter_grid = detect_grid_cells(binary, GROUP_ROWS, 1, region=(xl, yl, wl, hl))
+    letter = _grid_to_string(letter_grid, 1, letter_col=0)
+
+    return digits + letter
 
 
 def extract_signature_region(page_gray):
