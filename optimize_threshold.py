@@ -30,7 +30,7 @@ import random
 import cv2
 import numpy as np
 
-from utils.image_processing import load_image, deskew
+from utils.image_processing import load_image, deskew, correct_perspective
 from utils.grid_reader import extract_student_id, extract_signature_region
 from utils.signature_matcher import signature_score
 from utils.ground_truth import list_labelled_images
@@ -44,6 +44,9 @@ def _prepare(img_gray):
         img_gray = cv2.resize(img_gray, (int(w * scale), 2000),
                               interpolation=cv2.INTER_AREA)
     img_gray, _ = deskew(img_gray)
+    corrected, ok = correct_perspective(img_gray)
+    if ok:
+        img_gray = corrected
     return img_gray
 
 
