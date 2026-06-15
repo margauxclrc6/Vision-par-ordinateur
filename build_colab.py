@@ -107,52 +107,124 @@ DATA_ROOT/
 ```
 """))
 
+cells.append(md(
+"""La cellule de préparation ci-dessous accepte **deux dispositions** sans rien
+changer :
+- la disposition canonique ci-dessus, **ou**
+- la disposition « brute » fournie pour le challenge :
+  `FORM1/ FORM2/ FORM3/` (photos `.jpg`, PDF `.pdf` et vérités terrain `.xlsx`
+  mélangés) + `SIGNATURES/` (archives `.zip`, une par lot).
+
+Elle décompresse les signatures et range chaque `FORMx` en
+`EXAM_FORMx_PRESENCES` / `EXAM_FORMx_PDF` / `EXAM_FORMx_GT`.
+"""))
+
 cells.append(md("### Option A — Uploader un `.zip`"))
 cells.append(code(
-"""# Exécutez cette cellule, choisissez votre archive .zip, puis attendez.
-from google.colab import files
+"""from google.colab import files
 import zipfile, os
-
 up = files.upload()                       # sélectionnez votre .zip
 zip_name = next(iter(up))
-os.makedirs('/content/data', exist_ok=True)
+os.makedirs('/content/source', exist_ok=True)
 with zipfile.ZipFile(zip_name) as z:
-    z.extractall('/content/data')
-DATA_ROOT = '/content/data'
-print('Extrait dans', DATA_ROOT)
-print(os.listdir(DATA_ROOT))
+    z.extractall('/content/source')
+SOURCE = '/content/source'
+print('Extrait dans', SOURCE)
 """))
 
 cells.append(md("### Option B — Google Drive"))
 cells.append(code(
-"""# from google.colab import drive
-# drive.mount('/content/drive')
-# DATA_ROOT = '/content/drive/MyDrive/PROJET_DEEPFORM'   # adaptez ce chemin
-# import os; print(os.listdir(DATA_ROOT))
+"""from google.colab import drive
+drive.mount('/content/drive')
+import os
+print('Contenu de votre Drive :')
+for it in sorted(os.listdir('/content/drive/MyDrive')):
+    print('  -', it)
+# Renseignez le dossier qui contient vos données (signatures + formulaires) :
+SOURCE = '/content/drive/MyDrive/PROJECT 2026 -DATABASE-20260603'   # <-- ADAPTEZ
+assert os.path.exists(SOURCE), f'Introuvable : {SOURCE}'
+print('SOURCE =', SOURCE)
 """))
 
 cells.append(md(
-"""## Étape 4 — Localiser les dossiers
+"""## Étape 4 — Préparer les données (disposition automatique)
 
-Si vos dossiers sont dans un sous-répertoire du zip, cette cellule le détecte
-automatiquement (elle cherche `STUDENT_CLASS_SIGNATURES`).
+Détecte la structure et construit `/content/data` au format attendu par les
+programmes. Idempotent : ré-exécutable sans risque.
 """))
 cells.append(code(
-"""from pathlib import Path
+'''import os, zipfile, shutil
+from pathlib import Path
 
-def find_data_root(root):
+IMG_EXT = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".bmp", ".tif", ".tiff"}
+
+def _find(root, name):
     root = Path(root)
-    for p in [root, *root.rglob('*')]:
-        if p.is_dir() and (p / 'STUDENT_CLASS_SIGNATURES').exists():
+    for p in [root, *root.rglob("*")]:
+        if p.is_dir() and p.name == name:
             return p
-    return root
+    return None
 
-DATA_ROOT = find_data_root(DATA_ROOT)
-SIGNATURES_DIR = str(Path(DATA_ROOT) / 'STUDENT_CLASS_SIGNATURES')
-print('DATA_ROOT      =', DATA_ROOT)
-print('SIGNATURES_DIR =', SIGNATURES_DIR)
-print('Contenu        :', [p.name for p in Path(DATA_ROOT).iterdir()])
-"""))
+def prepare_data(source):
+    source = Path(source)
+    work = Path("/content/data")
+    if work.exists():
+        shutil.rmtree(work)
+    work.mkdir(parents=True)
+
+    # 1) Signatures — soit un dossier STUDENT_CLASS_SIGNATURES déjà prêt,
+    #    soit un dossier SIGNATURES contenant des .zip à décompresser.
+    sign = work / "STUDENT_CLASS_SIGNATURES"
+    ready = _find(source, "STUDENT_CLASS_SIGNATURES")
+    if ready is not None:
+        shutil.copytree(ready, sign)
+    else:
+        sign.mkdir(parents=True)
+        sdir = _find(source, "SIGNATURES")
+        if sdir is not None:
+            for z in sdir.glob("*.zip"):
+                with zipfile.ZipFile(z) as zf:
+                    zf.extractall(sign)
+    n_students = sum(1 for p in sign.iterdir() if p.is_dir())
+    print(f"Signatures : {n_students} élèves dans {sign}")
+
+    # 2) Formulaires — soit EXAM_FORMx_PRESENCES/_PDF déjà séparés,
+    #    soit des dossiers FORM1/2/3 (ou EXAM_FORMx) à trier.
+    canonical = sorted(p for p in source.rglob("EXAM_FORM*_PRESENCES") if p.is_dir())
+    if canonical:
+        for p in canonical:
+            shutil.copytree(p, work / p.name, dirs_exist_ok=True)
+        for p in source.rglob("EXAM_FORM*_PDF"):
+            if p.is_dir():
+                shutil.copytree(p, work / p.name, dirs_exist_ok=True)
+    else:
+        forms = sorted({p for p in [*source.iterdir(), *source.rglob("*")]
+                        if p.is_dir() and "FORM" in p.name.upper()
+                        and not p.name.endswith(("_PRESENCES", "_PDF", "_GT"))})
+        seen = set()
+        for fdir in forms:
+            tag = "FORM" + "".join(c for c in fdir.name if c.isdigit())
+            if tag in seen:
+                continue
+            seen.add(tag)
+            pres = work / f"EXAM_{tag}_PRESENCES"; pres.mkdir(parents=True, exist_ok=True)
+            pdfd = work / f"EXAM_{tag}_PDF";       pdfd.mkdir(parents=True, exist_ok=True)
+            gt   = work / f"EXAM_{tag}_GT";        gt.mkdir(parents=True, exist_ok=True)
+            for f in fdir.iterdir():
+                ext = f.suffix.lower()
+                if   ext in IMG_EXT: shutil.copy(f, pres / f.name)
+                elif ext == ".pdf":  shutil.copy(f, pdfd / f.name)
+                elif ext == ".xlsx": shutil.copy(f, gt / f.name)
+            print(f"{tag}: {len(list(pres.iterdir()))} photos, "
+                  f"{len(list(pdfd.iterdir()))} pdf, {len(list(gt.iterdir()))} GT")
+
+    return str(work), str(sign)
+
+DATA_ROOT, SIGNATURES_DIR = prepare_data(SOURCE)
+print("\\nDATA_ROOT      =", DATA_ROOT)
+print("SIGNATURES_DIR =", SIGNATURES_DIR)
+print("Contenu        :", sorted(p.name for p in Path(DATA_ROOT).iterdir()))
+'''))
 
 cells.append(md(
 """## Étape 5 — Programme 1 : validation des présences
