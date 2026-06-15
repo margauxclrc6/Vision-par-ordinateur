@@ -19,9 +19,11 @@ STUDENT_ID_REGION = (0.73, 0.18, 0.24, 0.38)   # 5-digit ID: 5 cols × 10 rows
 STUDENT_ID_DIGITS = 5
 STUDENT_ID_ROWS   = 10   # rows 0-9
 
-# Group grid: header row ("7 8 H") excluded, bubble rows 0-9 start at y≈0.215
-GROUP_DIGITS_REGION = (0.511, 0.215, 0.060, 0.283)  # 2 digit columns (e.g. 7,8)
-GROUP_LETTER_REGION = (0.622, 0.215, 0.045, 0.283)  # 1 letter column (A-J)
+# Group grid: precisely located via projection. Header excluded.
+# Digit col0 center x≈0.562, col1 x≈0.590, letter x≈0.647.
+# Rows 0-9 span y≈0.222 (top of row0) to y≈0.458 (bottom of row9).
+GROUP_DIGITS_REGION = (0.548, 0.221, 0.056, 0.237)  # 2 digit columns
+GROUP_LETTER_REGION = (0.632, 0.221, 0.030, 0.237)  # 1 letter column (A-J)
 GROUP_ROWS     = 10
 
 SIGNATURE_REGION = (0.02, 0.17, 0.85, 0.42)  # search area containing signature box

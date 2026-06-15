@@ -89,26 +89,28 @@ def _read_field_ocr(page_gray, rel_coords, mode="printed"):
         return t
 
     if mode == "digits":
-        # Gray halftone-stippled boxes: median blur removes the dot screen,
-        # then collect candidates over several thresholds and PSM modes and
-        # vote for the most frequent reading (robust to thin '1' strokes).
+        # Gray halftone-stippled boxes: the printed digits are solid black while
+        # the stipple is light gray. Crop inner margins to drop box borders, then
+        # use low thresholds to keep only the dark digits. Prefer the longest read.
         from collections import Counter
-        crop_med = cv2.medianBlur(crop, 5)
-        cfgs = ["--psm 7 -c tessedit_char_whitelist=0123456789",
-                "--psm 8 -c tessedit_char_whitelist=0123456789"]
+        ch, cw = crop.shape
+        my, mx = int(ch * 0.12), int(cw * 0.06)
+        inner = crop[my:ch - my, mx:cw - mx] if ch > 2 * my and cw > 2 * mx else crop
+        cfgs = ["--psm 8 -c tessedit_char_whitelist=0123456789",
+                "--psm 7 -c tessedit_char_whitelist=0123456789"]
         candidates = []
-        thr_list = [150, 130, 170, 110]
-        _, otsu = cv2.threshold(crop_med, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        bins = [cv2.threshold(crop_med, t, 255, cv2.THRESH_BINARY)[1] for t in thr_list]
-        bins.append(otsu)
-        for b in bins:
+        for thr in (110, 90, 130, 150):
+            _, b = cv2.threshold(inner, thr, 255, cv2.THRESH_BINARY)
             for cfg in cfgs:
                 t = re.sub(r'[^0-9]', '', pytesseract.image_to_string(b, config=cfg).strip())
                 if t:
                     candidates.append(t)
         if not candidates:
             return ""
-        return Counter(candidates).most_common(1)[0][0]
+        # Prefer the most common; break ties toward the longest reading
+        counts = Counter(candidates)
+        best = max(counts, key=lambda k: (counts[k], len(k)))
+        return best
 
     if mode == "handwriting":
         # Remove vertical box borders then OCR the remaining letter strokes
