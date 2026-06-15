@@ -23,55 +23,6 @@ from utils.exam_page_parser import parse_exam_page
 # Choices available per question — up to 8 (A-H) as per spec
 CHOICE_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 
-# ── OCR post-processing helpers (ported from reference implementation) ────────
-_DIGIT_LOOKS_LIKE  = {'O':'0','I':'1','L':'1','S':'5','G':'6','B':'8','Z':'2','T':'7'}
-_LETTER_LOOKS_LIKE = {'0':'O','1':'I','5':'S','6':'G','8':'B','2':'Z','7':'T','3':'S','9':'S'}
-
-def _force_fix_chars(raw, pattern):
-    raw = raw.upper().replace(' ', '')
-    chars = [c for c in raw if c not in '-./']
-    slots = [p for p in pattern if p not in '-./']
-    fixed = []
-    for i, ch in enumerate(chars):
-        if i >= len(slots):
-            fixed.append(ch)
-            continue
-        if slots[i] == 'D' and ch.isalpha():
-            fixed.append(_DIGIT_LOOKS_LIKE.get(ch, ch))
-        elif slots[i] == 'L' and ch.isdigit():
-            fixed.append(_LETTER_LOOKS_LIKE.get(ch, ch))
-        else:
-            fixed.append(ch)
-    result, ci = '', 0
-    for p in pattern:
-        if p in '-./':
-            result += p
-        elif ci < len(fixed):
-            result += fixed[ci]; ci += 1
-    return result
-
-def _fix_module(raw):
-    """IG.1103 → pattern LL.DDDD"""
-    chars = re.sub(r'[^A-Z0-9]', '', raw.upper())
-    return _force_fix_chars(chars[:6], ['L','L','.','D','D','D','D']) if len(chars) >= 6 else raw
-
-def _fix_code(raw):
-    """S1-01-G1 → pattern LD-DD-LD"""
-    chars = re.sub(r'[^A-Z0-9]', '', raw.upper())
-    return _force_fix_chars(chars[:6], ['L','D','-','D','D','-','L','D']) if len(chars) >= 6 else raw
-
-def _fix_professor(raw):
-    return re.sub(r'[^A-Za-z\-]', '', raw).upper().strip('-') or raw
-
-def _fix_date(raw):
-    m = re.search(r'(\d{1,2})[\/\.\-\s](\d{1,2})[\/\.\-\s](\d{2,4})', raw)
-    if m:
-        d, mo, y = m.groups()
-        y = '20' + y if len(y) == 2 else y
-        return f"{d.zfill(2)}/{mo.zfill(2)}/{y}"
-    return raw
-# ─────────────────────────────────────────────────────────────────────────────
-
 
 def _read_field_ocr(page_gray, rel_coords, mode="printed"):
     """Crop a field and OCR it with CLAHE + adaptive threshold for robust reading."""
@@ -106,12 +57,16 @@ def _read_field_ocr(page_gray, rel_coords, mode="printed"):
         return t
 
     if mode == "digits":
-        # Try Otsu first (her approach), then adaptive; strip all non-digits
-        _, bin_otsu = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        t = pytesseract.image_to_string(bin_otsu, config="--psm 7").strip()
+        # Read without strict whitelist (gray boxes confuse the thresholding),
+        # then correct common OCR digit confusions
+        _digit_map = str.maketrans('oOlI|SsBb', '001115588')
+        t = pytesseract.image_to_string(binary, config="--psm 7").strip()
         if not t:
-            t = pytesseract.image_to_string(binary, config="--psm 7").strip()
-        return re.sub(r'[^0-9]', '', t)
+            _, bin_otsu = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            t = pytesseract.image_to_string(bin_otsu, config="--psm 7").strip()
+        import re as _re
+        t = _re.sub(r'[^0-9oOlISsBb|]', '', t).translate(_digit_map)
+        return t
 
     t = pytesseract.image_to_string(binary, config="--psm 7").strip()
     if not t:
@@ -135,10 +90,10 @@ def _parse_page1(page_gray, signatures_dir):
 
     data = {}
 
-    data["Module"]    = _fix_module(_read_field_ocr(page_gray, PAGE1_FIELDS["module"]))
-    data["Professor"] = _fix_professor(_read_field_ocr(page_gray, PAGE1_FIELDS["professor"]))
-    data["Date"]      = _fix_date(_read_field_ocr(page_gray, PAGE1_FIELDS["date"], mode="date"))
-    data["Code"]      = _fix_code(_read_field_ocr(page_gray, PAGE1_FIELDS["code"]))
+    data["Module"]    = _read_field_ocr(page_gray, PAGE1_FIELDS["module"])
+    data["Professor"] = _read_field_ocr(page_gray, PAGE1_FIELDS["professor"])
+    data["Date"]      = _read_field_ocr(page_gray, PAGE1_FIELDS["date"], mode="date")
+    data["Code"]      = _read_field_ocr(page_gray, PAGE1_FIELDS["code"])
 
     data["Notes de cours"]      = _checkbox_val(page_gray, PAGE1_FIELDS["notes_cours"])
     data["Notes manuscrites"]   = _checkbox_val(page_gray, PAGE1_FIELDS["notes_manuscrites"])
