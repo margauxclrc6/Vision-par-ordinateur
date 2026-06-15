@@ -89,15 +89,17 @@ def _read_field_ocr(page_gray, rel_coords, mode="printed"):
         return t
 
     if mode == "digits":
-        # Gray-shaded boxes: try multiple thresholds to find the digits
+        # Gray halftone-stippled boxes: median blur removes the dot screen,
+        # then try multiple thresholds to isolate the dark digits.
+        crop_med = cv2.medianBlur(crop, 5)
         cfg = "--psm 7 -c tessedit_char_whitelist=0123456789"
-        for thr in (150, 170, 130):
-            _, bin_t = cv2.threshold(crop, thr, 255, cv2.THRESH_BINARY)
+        for thr in (150, 130, 170, 110):
+            _, bin_t = cv2.threshold(crop_med, thr, 255, cv2.THRESH_BINARY)
             t = pytesseract.image_to_string(bin_t, config=cfg).strip()
             t = re.sub(r'[^0-9]', '', t)
             if t:
                 return t
-        _, bin_otsu = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        _, bin_otsu = cv2.threshold(crop_med, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         t = pytesseract.image_to_string(bin_otsu, config=cfg).strip()
         return re.sub(r'[^0-9]', '', t)
 
