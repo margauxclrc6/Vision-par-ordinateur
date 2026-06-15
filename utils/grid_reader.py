@@ -19,8 +19,9 @@ STUDENT_ID_REGION = (0.73, 0.18, 0.24, 0.38)   # 5-digit ID: 5 cols × 10 rows
 STUDENT_ID_DIGITS = 5
 STUDENT_ID_ROWS   = 10   # rows 0-9
 
-GROUP_DIGITS_REGION = (0.50, 0.18, 0.09, 0.38)   # 2 digit columns (e.g. 7,8)
-GROUP_LETTER_REGION = (0.615, 0.18, 0.06, 0.38)  # 1 letter column (A-J)
+# Group grid: header row ("7 8 H") excluded, bubble rows 0-9 start at y≈0.215
+GROUP_DIGITS_REGION = (0.511, 0.215, 0.060, 0.283)  # 2 digit columns (e.g. 7,8)
+GROUP_LETTER_REGION = (0.622, 0.215, 0.045, 0.283)  # 1 letter column (A-J)
 GROUP_ROWS     = 10
 
 SIGNATURE_REGION = (0.02, 0.17, 0.85, 0.42)  # search area containing signature box
@@ -69,23 +70,55 @@ def extract_student_id(page_gray):
     return _grid_to_string(grid, STUDENT_ID_DIGITS)
 
 
+def _read_fixed_grid(binary, region, n_rows, n_cols):
+    """
+    Read a bubble grid by dividing the region into n_rows x n_cols equal cells
+    and picking, per column, the row with the highest dark-fill ratio.
+    More robust than contour clustering for small grids with known geometry.
+    Returns a list of length n_cols: the marked row index per column, or -1.
+    """
+    x0, y0, rw, rh = region
+    roi = binary[y0:y0 + rh, x0:x0 + rw]
+    inv = cv2.bitwise_not(roi)
+    cell_h = rh / n_rows
+    cell_w = rw / n_cols
+
+    result = []
+    for c in range(n_cols):
+        fills = []
+        for r in range(n_rows):
+            r0, r1 = int(r * cell_h), int((r + 1) * cell_h)
+            c0, c1 = int(c * cell_w), int((c + 1) * cell_w)
+            py = max(1, (r1 - r0) // 6)
+            px = max(1, (c1 - c0) // 6)
+            cell = inv[r0 + py:r1 - py, c0 + px:c1 - px]
+            fills.append(np.sum(cell > 0) / max(cell.size, 1))
+        fills = np.array(fills)
+        idx = int(np.argmax(fills))
+        # Marked only if clearly above the column's typical (empty) fill
+        if fills[idx] > 0.04 and fills[idx] > np.median(fills) * 1.5:
+            result.append(idx)
+        else:
+            result.append(-1)
+    return result
+
+
 def extract_group(page_gray):
     """
     Extract the group code (e.g. '78H') from its bubble grid.
     The grid has 2 digit columns and a separate letter column (A-J), with an
-    unequal gap between them, so each part is read from its own region.
+    unequal gap between them, so each part is read from its own region using a
+    fixed-grid fill reader (robust to the handwritten header boxes above).
     """
     binary = preprocess(page_gray)
 
-    # Two digit columns
     xd, yd, wd, hd = _locate_grid(page_gray, GROUP_DIGITS_REGION)
-    digit_grid = detect_grid_cells(binary, GROUP_ROWS, 2, region=(xd, yd, wd, hd))
-    digits = _grid_to_string(digit_grid, 2)
+    drows = _read_fixed_grid(binary, (xd, yd, wd, hd), GROUP_ROWS, 2)
+    digits = "".join(str(r) if r >= 0 else "?" for r in drows)
 
-    # One letter column
     xl, yl, wl, hl = _locate_grid(page_gray, GROUP_LETTER_REGION)
-    letter_grid = detect_grid_cells(binary, GROUP_ROWS, 1, region=(xl, yl, wl, hl))
-    letter = _grid_to_string(letter_grid, 1, letter_col=0)
+    lrows = _read_fixed_grid(binary, (xl, yl, wl, hl), GROUP_ROWS, 1)
+    letter = chr(ord('A') + lrows[0]) if lrows[0] >= 0 else "?"
 
     return digits + letter
 

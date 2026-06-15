@@ -90,18 +90,25 @@ def _read_field_ocr(page_gray, rel_coords, mode="printed"):
 
     if mode == "digits":
         # Gray halftone-stippled boxes: median blur removes the dot screen,
-        # then try multiple thresholds to isolate the dark digits.
+        # then collect candidates over several thresholds and PSM modes and
+        # vote for the most frequent reading (robust to thin '1' strokes).
+        from collections import Counter
         crop_med = cv2.medianBlur(crop, 5)
-        cfg = "--psm 7 -c tessedit_char_whitelist=0123456789"
-        for thr in (150, 130, 170, 110):
-            _, bin_t = cv2.threshold(crop_med, thr, 255, cv2.THRESH_BINARY)
-            t = pytesseract.image_to_string(bin_t, config=cfg).strip()
-            t = re.sub(r'[^0-9]', '', t)
-            if t:
-                return t
-        _, bin_otsu = cv2.threshold(crop_med, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        t = pytesseract.image_to_string(bin_otsu, config=cfg).strip()
-        return re.sub(r'[^0-9]', '', t)
+        cfgs = ["--psm 7 -c tessedit_char_whitelist=0123456789",
+                "--psm 8 -c tessedit_char_whitelist=0123456789"]
+        candidates = []
+        thr_list = [150, 130, 170, 110]
+        _, otsu = cv2.threshold(crop_med, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        bins = [cv2.threshold(crop_med, t, 255, cv2.THRESH_BINARY)[1] for t in thr_list]
+        bins.append(otsu)
+        for b in bins:
+            for cfg in cfgs:
+                t = re.sub(r'[^0-9]', '', pytesseract.image_to_string(b, config=cfg).strip())
+                if t:
+                    candidates.append(t)
+        if not candidates:
+            return ""
+        return Counter(candidates).most_common(1)[0][0]
 
     if mode == "handwriting":
         # Remove vertical box borders then OCR the remaining letter strokes
