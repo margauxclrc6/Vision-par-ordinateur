@@ -49,8 +49,8 @@ FOOTER_SKIP_RATIO = 0.04      # ignore the bottom 4 % (page number / cryptogram)
 
 # Numerical answer-box positions (fraction of page width)
 # Layout: [mantissa box] × .10 [unit box]
-MANT_X, MANT_W = 0.03, 0.13   # student-written value (x=3%→16%)
-EXP_X,  EXP_W  = 0.17, 0.07   # small exponent box   (x=17%→24%)
+MANT_X, MANT_W = 0.05, 0.13   # student-written value (x=5%→18%)
+EXP_X,  EXP_W  = 0.19, 0.07   # small exponent box   (x=19%→26%)
 UNIT_X, UNIT_W = 0.30, 0.22   # pre-printed unit label (x=30%→52%)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -151,26 +151,36 @@ def _read_number_box(page_gray, x, y, w, h, letters=False):
     crop = page_gray[max(0, y):y + h, max(0, x):x + w]
     if crop.size == 0:
         return ""
-    _, binary_check = cv2.threshold(crop, 0, 255,
-                                    cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    if np.sum(binary_check > 0) / max(binary_check.size, 1) < 0.005:
+
+    # Use adaptive threshold — more robust for faint pen strokes in PDF renders
+    block = max(11, (min(crop.shape) // 4) | 1)   # odd block size
+    binary_check = cv2.adaptiveThreshold(
+        crop, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, block, 8)
+    if np.sum(binary_check > 0) / max(binary_check.size, 1) < 0.003:
         return ""
+
     # Upscale to ~200px height for reliable Tesseract accuracy
     target_h = 200
     scale = max(2, target_h // max(crop.shape[0], 1))
     crop_up = cv2.resize(crop, (crop.shape[1] * scale, crop.shape[0] * scale),
                          interpolation=cv2.INTER_CUBIC)
-    _, binary = cv2.threshold(crop_up, 0, 255,
-                              cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    # Adaptive threshold on upscaled crop
+    block_up = max(11, (min(crop_up.shape) // 4) | 1)
+    binary = cv2.adaptiveThreshold(
+        crop_up, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV,
+        block_up, 8)
+
+    import re
     whitelist = ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
                  if letters else "0123456789.-")
     text = pytesseract.image_to_string(
         binary, config=f"--psm 7 -c tessedit_char_whitelist={whitelist}").strip()
     if not text:
-        # Fallback: PSM 6 without whitelist
-        text = pytesseract.image_to_string(binary, config="--psm 6").strip()
-        # Keep only relevant chars
-        import re
+        # Fallback: try Otsu
+        _, binary_otsu = cv2.threshold(crop_up, 0, 255,
+                                       cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        text = pytesseract.image_to_string(binary_otsu, config="--psm 6").strip()
         text = re.sub(r"[^0-9A-Za-z.\-]", "", text)
     return text
 
