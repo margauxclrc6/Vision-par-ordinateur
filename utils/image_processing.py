@@ -60,53 +60,76 @@ def _order_points(pts):
     return rect
 
 
+def _find_corner_mark(roi, expect_corner):
+    """
+    Find the centroid of the L-bracket registration mark in a corner ROI.
+    expect_corner: 'tl', 'tr', 'bl', 'br'
+    Returns (cx, cy) in ROI coordinates, or None.
+    """
+    # Threshold to black marks
+    _, bw = cv2.threshold(roi, 80, 255, cv2.THRESH_BINARY_INV)
+    # Keep only large connected components (the L-bracket, not stray noise)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, kernel)
+    cnts, _ = cv2.findContours(bw, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return None
+    # The L-bracket is not the largest blob (text may be larger) but it's
+    # near the expected corner — pick the contour whose bounding-box corner
+    # is closest to the expected image corner.
+    rh, rw = roi.shape
+    corners = {'tl': (0, 0), 'tr': (rw, 0), 'bl': (0, rh), 'br': (rw, rh)}
+    ex, ey = corners[expect_corner]
+    best, best_d = None, float('inf')
+    for cnt in cnts:
+        area = cv2.contourArea(cnt)
+        if area < 50:
+            continue
+        bx, by, bw2, bh2 = cv2.boundingRect(cnt)
+        cx = bx + bw2 // 2
+        cy = by + bh2 // 2
+        d = (cx - ex) ** 2 + (cy - ey) ** 2
+        if d < best_d:
+            best_d = d
+            best = (cx, cy)
+    return best
+
+
 def correct_perspective(img_gray):
     """
-    Find the A4 document boundary in a camera photo and warp it to a flat view.
-    Strategy: threshold to isolate the white paper (bright region) from darker background,
-    then find the largest quadrilateral contour and apply warpPerspective.
+    Use the 4 L-bracket registration marks printed in the corners of the A4 form
+    to compute a perspective transform and warp the image to a flat frontal view.
+    Each mark is searched in the outer 15% of the image in each corner.
     Returns (corrected_img, success: bool).
     """
     h, w = img_gray.shape
+    margin_x = int(w * 0.15)
+    margin_y = int(h * 0.15)
 
-    # 1. Threshold to isolate bright (white paper) from darker surroundings.
-    # Use Otsu on a blurred image so small print doesn't dominate.
-    blurred = cv2.GaussianBlur(img_gray, (9, 9), 0)
-    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # Extract corner ROIs
+    rois = {
+        'tl': (img_gray[:margin_y, :margin_x],          0,       0),
+        'tr': (img_gray[:margin_y, w - margin_x:],       w - margin_x, 0),
+        'bl': (img_gray[h - margin_y:, :margin_x],       0,       h - margin_y),
+        'br': (img_gray[h - margin_y:, w - margin_x:],   w - margin_x, h - margin_y),
+    }
 
-    # 2. Morphological closing to fill holes from printed text/lines inside the page
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
-    closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+    src_pts = []
+    for key in ('tl', 'tr', 'br', 'bl'):
+        roi, ox, oy = rois[key]
+        pt = _find_corner_mark(roi, key)
+        if pt is None:
+            return img_gray, False
+        src_pts.append([pt[0] + ox, pt[1] + oy])
 
-    # 3. Find the largest external contour (= page boundary)
-    cnts, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not cnts:
-        return img_gray, False
-    largest = max(cnts, key=cv2.contourArea)
-
-    # Must cover at least 20% of the frame to be the page
-    if cv2.contourArea(largest) < (w * h) * 0.20:
-        return img_gray, False
-
-    # 4. Approximate as quadrilateral
-    peri = cv2.arcLength(largest, True)
-    approx = cv2.approxPolyDP(largest, 0.02 * peri, True)
-    if len(approx) != 4:
-        # Try looser approximation
-        approx = cv2.approxPolyDP(largest, 0.05 * peri, True)
-    if len(approx) != 4:
-        return img_gray, False
-
-    # 5. Order corners and apply perspective transform
-    pts = approx.reshape(4, 2).astype(np.float32)
-    rect = _order_points(pts)
+    src = np.array(src_pts, dtype=np.float32)
 
     tgt_w = min(w, 1200)
-    tgt_h = int(tgt_w * 297 / 210)   # A4 portrait ratio
+    tgt_h = int(tgt_w * 297 / 210)
     dst = np.array([[0, 0], [tgt_w - 1, 0],
                     [tgt_w - 1, tgt_h - 1], [0, tgt_h - 1]], dtype=np.float32)
 
-    M = cv2.getPerspectiveTransform(rect, dst)
+    M = cv2.getPerspectiveTransform(src, dst)
     warped = cv2.warpPerspective(img_gray, M, (tgt_w, tgt_h),
                                  flags=cv2.INTER_LINEAR,
                                  borderMode=cv2.BORDER_REPLICATE)
