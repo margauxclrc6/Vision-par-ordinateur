@@ -5,7 +5,7 @@ import cv2
 from pdf2image import convert_from_path
 
 
-PDF_DPI = 150    # 150 DPI is sufficient for bubble detection and OCR
+PDF_DPI = 250    # 250 DPI needed for reliable OCR of faint handwriting
 
 
 def pdf_to_images(pdf_path):

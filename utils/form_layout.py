@@ -7,30 +7,21 @@ so they stay resolution-independent. Calibrate values against the actual form if
 # Page 1 fields
 
 PAGE1_FIELDS = {
-    # row 1 – Module
-    # row 1 – Module (printed, top header band)
-    "module":     (0.08, 0.055, 0.18, 0.025),
-    # row 2 – Professor
-    "professor":  (0.35, 0.055, 0.18, 0.025),
-    # row 3 – Date
-    "date":       (0.57, 0.055, 0.22, 0.025),
-    # row 4 – Code
-    "code":       (0.78, 0.055, 0.20, 0.025),
-    # row 5 – Notes de cours YES checkbox
-    "notes_cours":       (0.05, 0.615, 0.07, 0.025),
-    # row 6 – Notes manuscrites YES checkbox
-    "notes_manuscrites": (0.20, 0.615, 0.07, 0.025),
-    # row 7 – Ordinateur portable YES checkbox
-    "ordinateur":        (0.36, 0.615, 0.07, 0.025),
-    # row 8 – Calculatrice YES checkbox
-    "calculatrice":      (0.52, 0.615, 0.07, 0.025),
-    # row 9 – Feuilles brouillon YES checkbox
-    "feuilles_brouillon":     (0.68, 0.615, 0.07, 0.025),
-    "feuilles_brouillon_nb":  (0.20, 0.645, 0.10, 0.025),
-    # row 10 – Note maximale
-    "note_maximale": (0.55, 0.71, 0.15, 0.04),
-    # row 11 – Note pour valider
-    "note_valider":  (0.55, 0.76, 0.15, 0.04),
+    # CODES EXAM row — calibrated from actual PDF (y≈0.105 of page height)
+    "module":     (0.08, 0.100, 0.11, 0.020),
+    "professor":  (0.29, 0.100, 0.08, 0.020),
+    "date":       (0.44, 0.100, 0.14, 0.020),
+    "code":       (0.62, 0.100, 0.14, 0.020),
+    # Exam conditions checkboxes — in the "Are authorised" section (y≈0.55)
+    "notes_cours":       (0.04, 0.555, 0.08, 0.030),
+    "notes_manuscrites": (0.19, 0.555, 0.08, 0.030),
+    "ordinateur":        (0.35, 0.555, 0.08, 0.030),
+    "calculatrice":      (0.51, 0.555, 0.08, 0.030),
+    "feuilles_brouillon":     (0.66, 0.555, 0.08, 0.030),
+    "feuilles_brouillon_nb":  (0.20, 0.585, 0.10, 0.025),
+    # Note maximale / Note pour valider — calibrated (y≈0.775 and 0.815)
+    "note_maximale": (0.45, 0.770, 0.15, 0.040),
+    "note_valider":  (0.45, 0.815, 0.15, 0.040),
     # row 13 – Prénom (handwritten boxes)
     "prenom": (0.03, 0.155, 0.32, 0.045),
     # row 14 – Nom (handwritten boxes)

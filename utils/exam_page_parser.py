@@ -48,10 +48,10 @@ HEADER_SKIP_RATIO = 0.08      # ignore the top 8 % (page header band)
 FOOTER_SKIP_RATIO = 0.04      # ignore the bottom 4 % (page number / cryptogram)
 
 # Numerical answer-box positions (fraction of page width)
-# Layout: [mantissa box] × .10 [unit box]
-MANT_X, MANT_W = 0.05, 0.13   # student-written value (x=5%→18%)
-EXP_X,  EXP_W  = 0.19, 0.07   # small exponent box   (x=19%→26%)
-UNIT_X, UNIT_W = 0.30, 0.22   # pre-printed unit label (x=30%→52%)
+# Calibrated from actual PDF: mantissa box x=[0.128:0.251], unit box x=[0.391:0.516]
+MANT_X, MANT_W = 0.13, 0.12   # student-written value (x=13%→25%)
+EXP_X,  EXP_W  = 0.26, 0.07   # exponent area after ×10 label (x=26%→33%)
+UNIT_X, UNIT_W = 0.38, 0.14   # unit box (x=38%→52%)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -152,10 +152,11 @@ def _read_number_box(page_gray, x, y, w, h, letters=False):
     if crop.size == 0:
         return ""
 
-    # Use adaptive threshold — more robust for faint pen strokes in PDF renders
+    # Adaptive MEAN threshold with very low C=2 to capture faint handwriting
+    # (handwriting in scanned PDFs can be very light, ~4% dark pixels)
     block = max(11, (min(crop.shape) // 4) | 1)   # odd block size
     binary_check = cv2.adaptiveThreshold(
-        crop, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, block, 8)
+        crop, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, block, 2)
     if np.sum(binary_check > 0) / max(binary_check.size, 1) < 0.003:
         return ""
 
@@ -165,11 +166,11 @@ def _read_number_box(page_gray, x, y, w, h, letters=False):
     crop_up = cv2.resize(crop, (crop.shape[1] * scale, crop.shape[0] * scale),
                          interpolation=cv2.INTER_CUBIC)
 
-    # Adaptive threshold on upscaled crop
+    # Adaptive MEAN threshold on upscaled crop
     block_up = max(11, (min(crop_up.shape) // 4) | 1)
     binary = cv2.adaptiveThreshold(
-        crop_up, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV,
-        block_up, 8)
+        crop_up, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV,
+        block_up, 2)
 
     import re
     whitelist = ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
@@ -177,9 +178,12 @@ def _read_number_box(page_gray, x, y, w, h, letters=False):
     text = pytesseract.image_to_string(
         binary, config=f"--psm 7 -c tessedit_char_whitelist={whitelist}").strip()
     if not text:
-        # Fallback: try Otsu
-        _, binary_otsu = cv2.threshold(crop_up, 0, 255,
-                                       cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        # Fallback: CLAHE to boost faint strokes then adaptive
+        clahe = cv2.createCLAHE(clipLimit=8.0, tileGridSize=(4, 4))
+        crop_cl = clahe.apply(crop_up)
+        block_up2 = max(11, (min(crop_cl.shape) // 4) | 1)
+        binary_otsu = cv2.adaptiveThreshold(
+            crop_cl, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, block_up2, 2)
         text = pytesseract.image_to_string(binary_otsu, config="--psm 6").strip()
         text = re.sub(r"[^0-9A-Za-z.\-]", "", text)
     return text
