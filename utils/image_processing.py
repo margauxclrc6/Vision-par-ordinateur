@@ -65,27 +65,42 @@ def _find_corner_mark(roi, expect_corner):
     Find the centroid of the L-bracket registration mark in a corner ROI.
     expect_corner: 'tl', 'tr', 'bl', 'br'
     Returns (cx, cy) in ROI coordinates, or None.
+
+    An L-bracket is a thin L-shaped stroke: its bounding box is roughly square
+    but only sparsely filled. Text (e.g. "Module") and solid marks are dense, so
+    we reject candidates that are too dense, too small, too big, or too elongated
+    — then pick the bracket closest to the expected corner.
     """
-    # Threshold to black marks
-    _, bw = cv2.threshold(roi, 80, 255, cv2.THRESH_BINARY_INV)
-    # Keep only large connected components (the L-bracket, not stray noise)
+    rh, rw = roi.shape
+    short = min(rh, rw)
+
+    _, bw = cv2.threshold(roi, 90, 255, cv2.THRESH_BINARY_INV)
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
     bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, kernel)
     cnts, _ = cv2.findContours(bw, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not cnts:
         return None
-    # The L-bracket is not the largest blob (text may be larger) but it's
-    # near the expected corner — pick the contour whose bounding-box corner
-    # is closest to the expected image corner.
-    rh, rw = roi.shape
+
     corners = {'tl': (0, 0), 'tr': (rw, 0), 'bl': (0, rh), 'br': (rw, rh)}
     ex, ey = corners[expect_corner]
+
     best, best_d = None, float('inf')
     for cnt in cnts:
-        area = cv2.contourArea(cnt)
-        if area < 50:
-            continue
         bx, by, bw2, bh2 = cv2.boundingRect(cnt)
+        max_dim = max(bw2, bh2)
+        min_dim = min(bw2, bh2)
+        # Size: the L-bracket spans a noticeable fraction of the ROI, but is not
+        # the whole banner/border.
+        if max_dim < short * 0.06 or max_dim > short * 0.6:
+            continue
+        # Shape: roughly square (an L fits in a ~square box, not a thin line).
+        if min_dim / max_dim < 0.4:
+            continue
+        # Sparsity: an L outline fills little of its bbox; dense blobs are text
+        # or solid squares.
+        fill = cv2.contourArea(cnt) / (bw2 * bh2 + 1e-6)
+        if fill > 0.55:
+            continue
         cx = bx + bw2 // 2
         cy = by + bh2 // 2
         d = (cx - ex) ** 2 + (cy - ey) ** 2
