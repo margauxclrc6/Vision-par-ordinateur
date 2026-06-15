@@ -111,3 +111,28 @@ def match_signature(sig_gray, signatures_dir):
     if best_score < MATCH_THRESHOLD:
         return None, best_score
     return best_id, best_score
+
+
+VERIFY_THRESHOLD = 0.55   # 1:1 verification is easier than 1:N identification
+
+
+def verify_signature(sig_gray, student_id, signatures_dir):
+    """
+    Verify that sig_gray belongs to student_id.
+    Returns (matched: bool, score: float).
+    """
+    key = str(signatures_dir)
+    if key not in _db_cache:
+        _db_cache[key] = _load_database(signatures_dir)
+    db = _db_cache[key]
+
+    refs = db.get(str(student_id), [])
+    if not refs:
+        return False, 0.0
+
+    query = normalize_signature(sig_gray, SIG_TARGET_SIZE)
+    if np.sum(query) == 0:
+        return False, 0.0
+
+    score = max(_compare_signatures(query, ref) for ref in refs)
+    return score >= VERIFY_THRESHOLD, score

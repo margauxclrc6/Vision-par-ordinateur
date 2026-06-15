@@ -7,7 +7,7 @@ import openpyxl
 
 from utils.image_processing import load_image, deskew
 from utils.grid_reader import extract_student_id, extract_signature_region
-from utils.signature_matcher import match_signature
+from utils.signature_matcher import match_signature, verify_signature
 
 
 # All image extensions that may appear in the presences folder
@@ -43,11 +43,18 @@ def autoValidID(image_path, signatures_dir, xlsx_path, results_dir):
 
     student_id_grid = extract_student_id(img_gray)
     sig_gray = extract_signature_region(img_gray)
-    student_id_sig, score = match_signature(sig_gray, signatures_dir)
+
+    # 1:1 verification — check if signature matches the claimed grid ID
+    verified, score = verify_signature(sig_gray, student_id_grid, signatures_dir)
+    student_id_sig = student_id_grid if verified else None
+
+    # Fallback: if grid ID unreadable (?), do 1:N identification
+    if "?" in student_id_grid:
+        student_id_sig, score = match_signature(sig_gray, signatures_dir)
 
     status = "✓" if (student_id_sig and student_id_sig == student_id_grid) else "?"
     print(f"  {status} [{image_path.name}]  "
-          f"grid={student_id_grid}  sig={student_id_sig}  (NCC={score:.3f})")
+          f"grid={student_id_grid}  sig={student_id_sig}  (score={score:.3f})")
 
     return image_path.name, student_id_grid, student_id_sig
 
