@@ -119,7 +119,11 @@ def _find_checkboxes_in_strip(page_gray, y0, y1):
     min_area = MIN_BUBBLE_AREA_RATIO * page_area
     max_area = MAX_BUBBLE_AREA_RATIO * page_area
 
-    best_per_slot = {}   # key → (cy, fill)
+    # Dedup window: large enough to merge both strokes of an X mark within one checkbox,
+    # small enough to not merge adjacent choices. Based on block height.
+    dedup_px = max(15, int((y1 - y0) * 0.12))
+
+    candidates = []
     for cnt in cnts:
         bx, by, bw, bh = cv2.boundingRect(cnt)
         area = bw * bh
@@ -132,13 +136,19 @@ def _find_checkboxes_in_strip(page_gray, y0, y1):
         inner = inv[by + pad: by + bh - pad, bx + pad: bx + bw - pad]
         fill = float(np.sum(inner > 0)) / max(inner.size, 1)
         cy = y_skip + by + bh // 2
-        # Dedup window scales with page height to stay DPI-independent
-        dedup_px = max(10, int(ph * 0.012))
-        key = (by // dedup_px,)
-        if key not in best_per_slot or fill > best_per_slot[key][1]:
-            best_per_slot[key] = (cy, fill)
+        candidates.append((cy, fill))
 
-    boxes = sorted(best_per_slot.values(), key=lambda b: b[0])
+    # Greedy merge: group contours within dedup_px of the first contour in the group
+    candidates.sort(key=lambda c: c[0])
+    groups = []   # (first_cy, best_cy, best_fill)
+    for cy, fill in candidates:
+        if groups and cy - groups[-1][0] < dedup_px:
+            if fill > groups[-1][2]:
+                groups[-1] = (groups[-1][0], cy, fill)
+        else:
+            groups.append((cy, cy, fill))
+
+    boxes = sorted([(acy, fill) for (_, acy, fill) in groups], key=lambda b: b[0])
     return boxes
 
 
