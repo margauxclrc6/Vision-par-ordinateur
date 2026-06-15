@@ -24,6 +24,30 @@ from utils.exam_page_parser import parse_exam_page
 CHOICE_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 
 
+def _fix_module(text):
+    """Fix OCR errors in module code (format LL.DDDD, e.g. IG.1103)."""
+    text = re.sub(r'[\s|]+$', '', text.strip())
+    d2l = {'1': 'I', '6': 'G', '0': 'O', '5': 'S', '8': 'B', '3': 'E', '4': 'A'}
+    if len(text) >= 2:
+        chars = list(text)
+        for i in (0, 1):
+            if chars[i].isdigit():
+                chars[i] = d2l.get(chars[i], chars[i])
+        text = ''.join(chars)
+    return text
+
+
+def _fix_code(text):
+    """Fix OCR errors in exam code (format LN-NN-LN, e.g. S1-01-G1)."""
+    text = re.sub(r'[\s|]+$', '', text.strip())
+    d2l = {'3': 'S', '5': 'S', '6': 'G', '0': 'O', '1': 'I', '8': 'B'}
+    if len(text) >= 1 and text[0].isdigit():
+        text = d2l.get(text[0], text[0]) + text[1:]
+    if len(text) >= 7 and text[6].isdigit():
+        text = text[:6] + d2l.get(text[6], text[6]) + text[7:]
+    return text
+
+
 def _read_field_ocr(page_gray, rel_coords, mode="printed"):
     """Crop a field and OCR it with CLAHE + adaptive threshold for robust reading."""
     crop = crop_field(page_gray, rel_coords)
@@ -57,15 +81,25 @@ def _read_field_ocr(page_gray, rel_coords, mode="printed"):
         return t
 
     if mode == "digits":
-        # Read without strict whitelist (gray boxes confuse the thresholding),
-        # then correct common OCR digit confusions
-        _digit_map = str.maketrans('oOlI|SsBb', '001115588')
-        t = pytesseract.image_to_string(binary, config="--psm 7").strip()
+        # Gray-shaded boxes: fixed threshold at 180 works better than adaptive
+        _, bin_fixed = cv2.threshold(crop, 180, 255, cv2.THRESH_BINARY)
+        cfg = "--psm 7 -c tessedit_char_whitelist=0123456789"
+        t = pytesseract.image_to_string(bin_fixed, config=cfg).strip()
         if not t:
             _, bin_otsu = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            t = pytesseract.image_to_string(bin_otsu, config="--psm 7").strip()
-        import re as _re
-        t = _re.sub(r'[^0-9oOlISsBb|]', '', t).translate(_digit_map)
+            t = pytesseract.image_to_string(bin_otsu, config=cfg).strip()
+        if not t:
+            t = pytesseract.image_to_string(binary, config=cfg).strip()
+        return re.sub(r'[^0-9]', '', t)
+
+    if mode == "handwriting":
+        # Handwritten text: larger block for adaptive threshold, no whitelist
+        block2 = max(15, (min(crop_enh.shape) // 2) | 1)
+        bin2 = cv2.adaptiveThreshold(crop_enh, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                      cv2.THRESH_BINARY, block2, 5)
+        t = pytesseract.image_to_string(bin2, config="--psm 6").strip()
+        if not t:
+            t = pytesseract.image_to_string(binary, config="--psm 6").strip()
         return t
 
     t = pytesseract.image_to_string(binary, config="--psm 7").strip()
@@ -90,10 +124,10 @@ def _parse_page1(page_gray, signatures_dir):
 
     data = {}
 
-    data["Module"]    = _read_field_ocr(page_gray, PAGE1_FIELDS["module"])
+    data["Module"]    = _fix_module(_read_field_ocr(page_gray, PAGE1_FIELDS["module"]))
     data["Professor"] = _read_field_ocr(page_gray, PAGE1_FIELDS["professor"])
     data["Date"]      = _read_field_ocr(page_gray, PAGE1_FIELDS["date"], mode="date")
-    data["Code"]      = _read_field_ocr(page_gray, PAGE1_FIELDS["code"])
+    data["Code"]      = _fix_code(_read_field_ocr(page_gray, PAGE1_FIELDS["code"]))
 
     data["Notes de cours"]      = _checkbox_val(page_gray, PAGE1_FIELDS["notes_cours"])
     data["Notes manuscrites"]   = _checkbox_val(page_gray, PAGE1_FIELDS["notes_manuscrites"])
@@ -103,6 +137,9 @@ def _parse_page1(page_gray, signatures_dir):
 
     data["Note maximale"]     = _read_field_ocr(page_gray, PAGE1_FIELDS["note_maximale"], mode="digits")
     data["Note pour valider"] = _read_field_ocr(page_gray, PAGE1_FIELDS["note_valider"], mode="digits")
+
+    data["Prénom"] = _read_field_ocr(page_gray, PAGE1_FIELDS["prenom"], mode="handwriting")
+    data["Nom"]    = _read_field_ocr(page_gray, PAGE1_FIELDS["nom"],    mode="handwriting")
 
     sig_gray = extract_signature_region(page_gray)
     student_id_sig, sig_score = match_signature(sig_gray, signatures_dir)
