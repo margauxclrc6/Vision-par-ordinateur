@@ -75,15 +75,26 @@ def extract_student_id(page_gray):
 def _read_fixed_grid(binary, region, n_rows, n_cols):
     """
     Read a bubble grid by dividing the region into n_rows x n_cols equal cells
-    and picking, per column, the row with the highest dark-fill ratio.
-    More robust than contour clustering for small grids with known geometry.
+    and picking, per column, the row whose box contains an X mark.
+    The empty box borders are removed by morphology first, so only the
+    hand-drawn cross strokes contribute to the fill measurement.
     Returns a list of length n_cols: the marked row index per column, or -1.
     """
     x0, y0, rw, rh = region
     roi = binary[y0:y0 + rh, x0:x0 + rw]
     inv = cv2.bitwise_not(roi)
+
     cell_h = rh / n_rows
     cell_w = rw / n_cols
+
+    # Remove straight box borders (long horizontal / vertical runs), keep X strokes
+    h_len = max(5, int(cell_w * 0.55))
+    v_len = max(5, int(cell_h * 0.55))
+    h_kern = cv2.getStructuringElement(cv2.MORPH_RECT, (h_len, 1))
+    v_kern = cv2.getStructuringElement(cv2.MORPH_RECT, (1, v_len))
+    lines = cv2.add(cv2.morphologyEx(inv, cv2.MORPH_OPEN, h_kern),
+                    cv2.morphologyEx(inv, cv2.MORPH_OPEN, v_kern))
+    marks = cv2.subtract(inv, lines)
 
     result = []
     for c in range(n_cols):
@@ -91,14 +102,11 @@ def _read_fixed_grid(binary, region, n_rows, n_cols):
         for r in range(n_rows):
             r0, r1 = int(r * cell_h), int((r + 1) * cell_h)
             c0, c1 = int(c * cell_w), int((c + 1) * cell_w)
-            py = max(1, (r1 - r0) // 6)
-            px = max(1, (c1 - c0) // 6)
-            cell = inv[r0 + py:r1 - py, c0 + px:c1 - px]
+            cell = marks[r0:r1, c0:c1]
             fills.append(np.sum(cell > 0) / max(cell.size, 1))
         fills = np.array(fills)
         idx = int(np.argmax(fills))
-        # Marked only if clearly above the column's typical (empty) fill
-        if fills[idx] > 0.04 and fills[idx] > np.median(fills) * 1.5:
+        if fills[idx] > 0.02 and fills[idx] > np.median(fills) * 2.0:
             result.append(idx)
         else:
             result.append(-1)

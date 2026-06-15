@@ -89,28 +89,29 @@ def _read_field_ocr(page_gray, rel_coords, mode="printed"):
         return t
 
     if mode == "digits":
-        # Gray halftone-stippled boxes: the printed digits are solid black while
-        # the stipple is light gray. Crop inner margins to drop box borders, then
-        # use low thresholds to keep only the dark digits. Prefer the longest read.
+        # Gray halftone-stippled boxes with gray printed digits. Median blur
+        # removes the dot screen, Otsu then separates the gray digits from the
+        # lighter background. Vote across PSM/scale, preferring the longest read.
         from collections import Counter
         ch, cw = crop.shape
-        my, mx = int(ch * 0.12), int(cw * 0.06)
+        my, mx = int(ch * 0.10), int(cw * 0.05)
         inner = crop[my:ch - my, mx:cw - mx] if ch > 2 * my and cw > 2 * mx else crop
         cfgs = ["--psm 8 -c tessedit_char_whitelist=0123456789",
                 "--psm 7 -c tessedit_char_whitelist=0123456789"]
         candidates = []
-        for thr in (110, 90, 130, 150):
-            _, b = cv2.threshold(inner, thr, 255, cv2.THRESH_BINARY)
+        for ksize in (5, 3):
+            med = cv2.medianBlur(inner, ksize)
+            up = cv2.resize(med, (med.shape[1] * 3, med.shape[0] * 3),
+                            interpolation=cv2.INTER_CUBIC)
+            _, b = cv2.threshold(up, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
             for cfg in cfgs:
                 t = re.sub(r'[^0-9]', '', pytesseract.image_to_string(b, config=cfg).strip())
                 if t:
                     candidates.append(t)
         if not candidates:
             return ""
-        # Prefer the most common; break ties toward the longest reading
         counts = Counter(candidates)
-        best = max(counts, key=lambda k: (counts[k], len(k)))
-        return best
+        return max(counts, key=lambda k: (counts[k], len(k)))
 
     if mode == "handwriting":
         # Remove vertical box borders then OCR the remaining letter strokes
