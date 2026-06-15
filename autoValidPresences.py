@@ -50,12 +50,18 @@ def autoValidID(image_path, signatures_dir, xlsx_path, results_dir):
     student_id_grid = extract_student_id(img_gray)
     sig_gray = extract_signature_region(img_gray)
 
-    # 1:1 verification — check if signature matches the claimed grid ID
+    # Column C (studentID_signature = StudentID_bitmap, cf. §3.3): the identity
+    # the signature itself belongs to, deduced from the signature database —
+    # INDEPENDENT of the grid, so the professor can compare B and C to spot an
+    # identity usurpation (B != C) or an unrecognised signature (C empty).
+    #
+    # We first test the fast, accurate 1:1 hypothesis "the signature confirms the
+    # grid ID"; if it is not confirmed (wrong/usurped/unreadable grid), we fall
+    # back to a full 1:N identification so column C is still populated.
     verified, score = verify_signature(sig_gray, student_id_grid, signatures_dir)
-    student_id_sig = student_id_grid if verified else None
-
-    # Fallback: if grid ID unreadable (?), do 1:N identification
-    if "?" in student_id_grid:
+    if verified and "?" not in student_id_grid:
+        student_id_sig = student_id_grid
+    else:
         student_id_sig, score = match_signature(sig_gray, signatures_dir)
 
     status = "✓" if (student_id_sig and student_id_sig == student_id_grid) else "?"

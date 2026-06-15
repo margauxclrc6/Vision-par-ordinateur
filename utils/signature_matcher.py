@@ -11,7 +11,11 @@ from utils.image_processing import load_image, normalize_signature
 
 
 SIG_TARGET_SIZE = (128, 64)   # (width, height)
-MATCH_THRESHOLD = 0.30        # combined score threshold
+# 1:N identification accept threshold. Set near the validated 1:1 verification
+# threshold (0.64): in identification the score is a max over all students, so
+# the impostor competition is stronger and a permissive value (e.g. 0.30) would
+# accept almost anything. 0.60 keeps only confident matches.
+MATCH_THRESHOLD = 0.60        # combined score threshold
 
 SUPPORTED_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif",
                  ".heic", ".heif", ".webp"}
