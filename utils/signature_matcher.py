@@ -15,7 +15,7 @@ SIG_TARGET_SIZE = (128, 64)   # (width, height)
 # threshold (0.64): in identification the score is a max over all students, so
 # the impostor competition is stronger and a permissive value (e.g. 0.30) would
 # accept almost anything. 0.60 keeps only confident matches.
-MATCH_THRESHOLD = 0.60        # combined score threshold
+MATCH_THRESHOLD = 0.70        # combined score threshold
 
 SUPPORTED_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif",
                  ".heic", ".heif", ".webp"}
@@ -120,7 +120,7 @@ def match_signature(sig_gray, signatures_dir):
 # Default operating threshold, optimised on the validation set via the strict
 # train/validation/test protocol in optimize_threshold.py (balanced accuracy of
 # genuine-accept vs impostor-reject). Train & validation optima both gave 0.64.
-VERIFY_THRESHOLD = 0.64
+VERIFY_THRESHOLD = 0.55
 
 
 def signature_score(sig_gray, student_id, signatures_dir):
