@@ -9,7 +9,7 @@ are approximate; the grid detector uses robust contour-based methods.
 
 import cv2
 import numpy as np
-from utils.image_processing import preprocess, morpho_open, detect_grid_cells
+from utils.image_processing import preprocess, morpho_open
 
 
 # ── Region definitions (fraction of image width/height) ─────────────────────
@@ -64,12 +64,12 @@ def extract_student_id(page_gray):
     """
     Extract the numeric student ID from the bubble grid.
     Returns e.g. '63807' or a string with '?' for unread columns.
+    Uses the same robust fixed-grid fill reader as the group grid.
     """
     binary = preprocess(page_gray)
     x, y, w, h = _locate_grid(page_gray, STUDENT_ID_REGION)
-    grid = detect_grid_cells(binary, STUDENT_ID_ROWS, STUDENT_ID_DIGITS,
-                             region=(x, y, w, h))
-    return _grid_to_string(grid, STUDENT_ID_DIGITS)
+    cols = _read_fixed_grid(binary, (x, y, w, h), STUDENT_ID_ROWS, STUDENT_ID_DIGITS)
+    return "".join(str(c) if c >= 0 else "?" for c in cols)
 
 
 def _read_fixed_grid(binary, region, n_rows, n_cols):
