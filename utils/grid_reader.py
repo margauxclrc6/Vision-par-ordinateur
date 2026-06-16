@@ -15,7 +15,9 @@ from utils.image_processing import preprocess, morpho_open
 # ── Region definitions (fraction of image width/height) ─────────────────────
 # These cover the A4 form as seen in a roughly-centered camera photo.
 
-STUDENT_ID_REGION = (0.73, 0.18, 0.24, 0.38)   # 5-digit ID: 5 cols × 10 rows
+# StudentID grid: rows 0-9 are aligned with the Group grid (same horizontal band),
+# so we reuse the Group grid's validated vertical calibration (y≈0.221, h≈0.237).
+STUDENT_ID_REGION = (0.72, 0.221, 0.15, 0.237)   # 5 cols × 10 rows
 STUDENT_ID_DIGITS = 5
 STUDENT_ID_ROWS   = 10   # rows 0-9
 
