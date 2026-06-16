@@ -128,12 +128,14 @@ def normalize_signature(sig_gray, target_size=(128, 64)):
     coords = cv2.findNonZero(binary)
     if coords is None:
         return np.zeros((target_size[1], target_size[0]), dtype=np.uint8)
-    x, y, w, h = cv2.boundingRect(coords)
+    pts = coords.reshape(-1, 2)
+    x, y = int(pts[:, 0].min()), int(pts[:, 1].min())
+    x2, y2 = int(pts[:, 0].max()), int(pts[:, 1].max())
     pad = 4
     x, y = max(0, x - pad), max(0, y - pad)
-    w = min(binary.shape[1] - x, w + 2 * pad)
-    h = min(binary.shape[0] - y, h + 2 * pad)
-    cropped = binary[y:y + h, x:x + w]
+    x2 = min(binary.shape[1], x2 + pad)
+    y2 = min(binary.shape[0], y2 + pad)
+    cropped = binary[y:y2, x:x2]
     return cv2.resize(cropped, target_size, interpolation=cv2.INTER_AREA)
 
 
