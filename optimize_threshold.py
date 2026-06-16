@@ -30,7 +30,7 @@ import random
 import cv2
 import numpy as np
 
-from utils.image_processing import load_image, deskew, correct_perspective
+from utils.image_processing import load_image, deskew
 from utils.grid_reader import extract_student_id, extract_signature_region
 from utils.signature_matcher import signature_score
 from utils.ground_truth import list_labelled_images

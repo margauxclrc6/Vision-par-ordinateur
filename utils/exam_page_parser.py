@@ -21,14 +21,13 @@ Strategy:
 
 import cv2
 import numpy as np
-from utils.image_processing import (preprocess, morpho_open,
-                                     find_horizontal_lines)
+from utils.image_processing import preprocess, find_horizontal_lines
 
 
 # ── tunables ──────────────────────────────────────────────────────────────────
-MIN_BUBBLE_AREA_RATIO = 0.00015  # min checkbox area as fraction of page area
-MAX_BUBBLE_AREA_RATIO = 0.004    # max checkbox area as fraction of page area
-ASPECT_RATIO_RANGE    = (0.3, 3.0)   # width/height of a checkbox bounding box
+# Checkbox-grid detection by morphology (no contour/box detection, cf. §4.1)
+BOX_EDGE_LEN_RATIO  = 0.45   # horizontal opening length, fraction of strip width
+BOX_EDGE_FILL_RATIO = 0.40   # a row is a box edge if ≥ this fraction is line ink
 
 # Left strip where multiple-choice checkboxes live (fraction of page width)
 CHECKBOX_X_MIN = 0.04
@@ -96,49 +95,70 @@ def _detect_question_blocks(page_gray):
 
 def _find_checkboxes_in_strip(page_gray, y0, y1):
     """
-    Find checkbox bubbles inside the left strip of the [y0, y1] block.
+    Find the stacked checkboxes inside the left strip of the [y0, y1] block,
+    using only low-level operations (morphology + projections), cf. §4.1 — no
+    contour-based rectangle/checkbox detection.
+
+    Method:
+      1. Isolate the printed horizontal box edges with a horizontal morphological
+         opening; their vertical positions, clustered, delimit the checkbox cells.
+      2. Remove the box borders (H/V openings) to keep only the hand-drawn cross.
+      3. For each cell, measure the cross fill ratio.
     Returns list of (cy, fill_ratio) sorted top-to-bottom.
     """
     ph, pw = page_gray.shape
-    page_area = ph * pw
 
     x0 = int(CHECKBOX_X_MIN * pw)
     x1 = int(CHECKBOX_X_MAX * pw)
     # Skip the header band at the top of the block (contains the ● QUESTION N label)
     y_skip = int(y0 + (y1 - y0) * BLOCK_HEADER_SKIP)
     strip = page_gray[y_skip:y1, x0:x1]
-    if strip.size == 0:
+    if strip.size == 0 or strip.shape[0] < 6:
         return []
 
+    sh, sw = strip.shape
     binary = preprocess(strip)
-    inv = cv2.bitwise_not(binary)
-    opened = morpho_open(inv, ksize=2)
+    inv = cv2.bitwise_not(binary)  # ink / lines = white on black
 
-    cnts, _ = cv2.findContours(opened, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    # ── 1. Box edges → cell boundaries (horizontal opening) ──
+    edge_len = max(5, int(sw * BOX_EDGE_LEN_RATIO))
+    h_kern = cv2.getStructuringElement(cv2.MORPH_RECT, (edge_len, 1))
+    h_lines = cv2.morphologyEx(inv, cv2.MORPH_OPEN, h_kern)
+    row_strength = np.sum(h_lines > 0, axis=1)
+    is_edge = row_strength >= (BOX_EDGE_FILL_RATIO * sw)
 
-    min_area = MIN_BUBBLE_AREA_RATIO * page_area
-    max_area = MAX_BUBBLE_AREA_RATIO * page_area
+    # Cluster consecutive edge rows into single border y-positions
+    borders = []
+    y = 0
+    while y < sh:
+        if is_edge[y]:
+            ys = y
+            while y < sh and is_edge[y]:
+                y += 1
+            borders.append((ys + y - 1) // 2)
+        else:
+            y += 1
 
-    dedup_px = 20   # merge contours within 20px (same checkbox, two X strokes)
+    if len(borders) < 4:          # need ≥3 cells (4 borders) to be a MCQ column
+        return []
 
-    seen = {}
-    for cnt in cnts:
-        bx, by, bw, bh = cv2.boundingRect(cnt)
-        area = bw * bh
-        if not (min_area < area < max_area):
+    # ── 2. Remove borders, keep the cross strokes ──
+    v_len = max(5, int((np.median(np.diff(borders))) * 0.55))
+    v_kern = cv2.getStructuringElement(cv2.MORPH_RECT, (1, v_len))
+    lines = cv2.add(h_lines, cv2.morphologyEx(inv, cv2.MORPH_OPEN, v_kern))
+    marks = cv2.subtract(inv, lines)
+
+    # ── 3. Fill ratio per cell (band between consecutive borders) ──
+    boxes = []
+    for i in range(len(borders) - 1):
+        a, b = borders[i], borders[i + 1]
+        if (b - a) < 4:
             continue
-        aspect = bw / max(bh, 1)
-        if not (ASPECT_RATIO_RANGE[0] < aspect < ASPECT_RATIO_RANGE[1]):
-            continue
-        pad = max(2, int(min(bw, bh) * 0.18))
-        inner = inv[by + pad: by + bh - pad, bx + pad: bx + bw - pad]
-        fill = float(np.sum(inner > 0)) / max(inner.size, 1)
-        cy = y_skip + by + bh // 2
-        key = cy // dedup_px
-        if key not in seen or fill > seen[key][1]:
-            seen[key] = (cy, fill)
+        cell = marks[a:b, :]
+        fill = float(np.sum(cell > 0)) / max(cell.size, 1)
+        cy = y_skip + (a + b) // 2
+        boxes.append((cy, fill))
 
-    boxes = sorted(seen.values(), key=lambda b: b[0])
     return boxes
 
 

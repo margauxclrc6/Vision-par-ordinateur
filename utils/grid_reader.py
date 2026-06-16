@@ -15,8 +15,7 @@ from utils.image_processing import preprocess, morpho_open
 # ── Region definitions (fraction of image width/height) ─────────────────────
 # These cover the A4 form as seen in a roughly-centered camera photo.
 
-STUDENT_ID_REGION = (0.70, 0.16, 0.27, 0.30)   # generous search zone; the grid
-# itself is then localised inside it via _locate_bubble_grid (checkbox detection)
+STUDENT_ID_REGION = (0.73, 0.18, 0.24, 0.38)   # 5-digit ID: 5 cols × 10 rows
 STUDENT_ID_DIGITS = 5
 STUDENT_ID_ROWS   = 10   # rows 0-9
 
@@ -61,73 +60,17 @@ def _grid_to_string(grid, n_cols, letter_col=None):
     return "".join(chars)
 
 
-def _locate_bubble_grid(binary, search_region, n_rows, n_cols):
-    """
-    Localise précisément la grille de cases à cocher à l'intérieur d'une zone de
-    recherche généreuse, pour s'affranchir du cadrage variable des photos.
-
-    Bas niveau : on détecte les contours carrés des cases (taille homogène),
-    puis on renvoie le cadre englobant exact de la matrice n_rows x n_cols
-    (centres extrêmes ± une demi-cellule). Si la détection n'est pas fiable
-    (moins de 40 % des cases trouvées), on retombe sur la zone de recherche fixe.
-    """
-    x0, y0, sw, sh = search_region
-    roi = binary[y0:y0 + sh, x0:x0 + sw]
-    inv = cv2.bitwise_not(roi)  # cases = traits clairs sur fond sombre
-    cnts, _ = cv2.findContours(inv, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-
-    approx_cell = sw / max(n_cols, 1)
-    cand = []
-    for c in cnts:
-        x, y, w, h = cv2.boundingRect(c)
-        if not (approx_cell * 0.20 < w < approx_cell * 0.90):
-            continue
-        if not (approx_cell * 0.20 < h < approx_cell * 0.90):
-            continue
-        ar = w / float(h)
-        if ar < 0.6 or ar > 1.7:
-            continue
-        cand.append((x + w / 2.0, y + h / 2.0, w, h))
-
-    if len(cand) < n_rows * n_cols * 0.4:
-        return search_region
-
-    med_w = np.median([c[2] for c in cand])
-    med_h = np.median([c[3] for c in cand])
-    cand = [c for c in cand
-            if 0.6 * med_w < c[2] < 1.5 * med_w
-            and 0.6 * med_h < c[3] < 1.5 * med_h]
-    if len(cand) < n_rows * n_cols * 0.4:
-        return search_region
-
-    xs = np.array([c[0] for c in cand])
-    ys = np.array([c[1] for c in cand])
-    xmin, xmax, ymin, ymax = xs.min(), xs.max(), ys.min(), ys.max()
-
-    cellw = (xmax - xmin) / (n_cols - 1) if n_cols > 1 else med_w
-    cellh = (ymax - ymin) / (n_rows - 1) if n_rows > 1 else med_h
-
-    gx = int(x0 + xmin - cellw / 2)
-    gy = int(y0 + ymin - cellh / 2)
-    gw = int((xmax - xmin) + cellw)
-    gh = int((ymax - ymin) + cellh)
-
-    if gw < sw * 0.2 or gh < sh * 0.2:
-        return search_region
-    return (gx, gy, gw, gh)
-
-
 def extract_student_id(page_gray):
     """
     Extract the numeric student ID from the bubble grid.
     Returns e.g. '63807' or a string with '?' for unread columns.
-    The grid is first localised by detecting the checkbox squares (robust to the
-    variable framing of camera photos), then read with the fixed-grid fill reader.
+    Uses the same low-level fixed-grid fill reader as the group grid:
+    morphological removal of the printed box borders, then fill measurement
+    per cell (no high-level rectangle/checkbox detection, cf. consignes §4.1).
     """
     binary = preprocess(page_gray)
-    search = _locate_grid(page_gray, STUDENT_ID_REGION)
-    region = _locate_bubble_grid(binary, search, STUDENT_ID_ROWS, STUDENT_ID_DIGITS)
-    cols = _read_fixed_grid(binary, region, STUDENT_ID_ROWS, STUDENT_ID_DIGITS)
+    x, y, w, h = _locate_grid(page_gray, STUDENT_ID_REGION)
+    cols = _read_fixed_grid(binary, (x, y, w, h), STUDENT_ID_ROWS, STUDENT_ID_DIGITS)
     return "".join(str(c) if c >= 0 else "?" for c in cols)
 
 
@@ -194,44 +137,36 @@ def extract_group(page_gray):
 
 def extract_signature_region(page_gray):
     """
-    Find the signature box rectangle in the search area and return its interior.
-    Falls back to the full search area if no rectangle is found.
+    Return the signature sub-image from its fixed relative region.
+
+    No high-level rectangle detection (cf. consignes §4.1): we crop the fixed
+    SIGNATURE_REGION, then tighten the crop around the ink using horizontal and
+    vertical projection profiles of the binarised stroke pixels — a low-level
+    operation (thresholding + projections). Falls back to the whole region when
+    too little ink is present.
     """
-    ph, pw = page_gray.shape
     x, y, w, h = _locate_grid(page_gray, SIGNATURE_REGION)
     roi = page_gray[y:y + h, x:x + w]
 
-    # Threshold and find contours of large rectangles
     _, binary = cv2.threshold(roi, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    cnts, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    min_area = (w * h) * 0.05
-    max_area = (w * h) * 0.80
-    best_area = 0
-    best_box  = None
+    col_ink = np.sum(binary > 0, axis=0)
+    row_ink = np.sum(binary > 0, axis=1)
+    if col_ink.sum() == 0 or row_ink.sum() == 0:
+        return roi
 
-    for cnt in cnts:
-        area = cv2.contourArea(cnt)
-        if not (min_area < area < max_area):
-            continue
-        peri = cv2.arcLength(cnt, True)
-        approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
-        if len(approx) != 4:
-            continue
-        bx, by, bw, bh = cv2.boundingRect(approx)
-        aspect = bw / max(bh, 1)
-        if not (0.8 < aspect < 4.0):
-            continue
-        if area > best_area:
-            best_area = area
-            best_box  = (bx, by, bw, bh)
+    # Keep columns/rows whose ink exceeds a small fraction of the peak
+    col_thr = max(1, int(0.10 * col_ink.max()))
+    row_thr = max(1, int(0.10 * row_ink.max()))
+    cols = np.where(col_ink > col_thr)[0]
+    rows = np.where(row_ink > row_thr)[0]
+    if cols.size == 0 or rows.size == 0:
+        return roi
 
-    if best_box is not None:
-        bx, by, bw, bh = best_box
-        pad = 4
-        interior = roi[max(0, by + pad): by + bh - pad,
-                       max(0, bx + pad): bx + bw - pad]
-        if interior.size > 0:
-            return interior
-
-    return roi
+    pad = 4
+    x0 = max(0, cols[0] - pad)
+    x1 = min(roi.shape[1], cols[-1] + pad)
+    y0 = max(0, rows[0] - pad)
+    y1 = min(roi.shape[0], rows[-1] + pad)
+    interior = roi[y0:y1, x0:x1]
+    return interior if interior.size > 0 else roi

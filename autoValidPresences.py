@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import openpyxl
 
-from utils.image_processing import load_image, deskew, correct_perspective
+from utils.image_processing import load_image, deskew
 from utils.grid_reader import extract_student_id, extract_signature_region
 from utils.signature_matcher import match_signature, verify_signature
 
@@ -29,11 +29,6 @@ def _prepare_image(img_gray):
                               interpolation=cv2.INTER_AREA)
 
     img_gray, _ = deskew(img_gray)
-
-    # NB: an L-bracket perspective correction was explored (see
-    # utils.image_processing.correct_perspective) but, on these fairly frontal
-    # camera photos, the deskew already removes most distortion and the warp did
-    # not improve grid accuracy on the validation set, so it is left disabled.
     return img_gray
 
 

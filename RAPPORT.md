@@ -147,16 +147,18 @@ r^\*(c) = \arg\max_r \phi(r,c),\quad
 \text{retenu si } \phi(r^\*,c) > 0{,}02 \text{ et } \phi(r^\*,c) > 2\,\widetilde{\phi}(c).
 $$
 
-Une variante de détection (contours de bulles carrées + regroupement par
-*k-means* sur les centres) sert de méthode primaire pour le StudentID, avec
-repli sur la division régulière. Toutes ces opérations relèvent strictement de la
-vision bas niveau.
+La même méthode (suppression morphologique des bords puis mesure de remplissage)
+est appliquée au StudentID, au numéro de groupe et aux QCM du formulaire. Aucune
+détection automatique de rectangles ou de cases cochées n'est employée : toutes
+ces opérations relèvent strictement de la vision bas niveau (filtrage,
+morphologie, projections), conformément aux consignes §4.1.
 
 ### 3.3 Vérification de signature
 
-La région de signature est localisée en cherchant le plus grand **rectangle**
-(contour à 4 sommets, rapport d'aspect plausible) dans la zone réservée, par
-`approxPolyDP`. L'intérieur est **normalisé** : seuillage adaptatif gaussien
+La région de signature est extraite de sa zone relative fixe, puis recadrée
+serré sur l'encre au moyen des **profils de projection** (sommes de pixels par
+ligne et par colonne) du tracé binarisé — une opération bas niveau, sans
+détection de rectangle. L'intérieur est **normalisé** : seuillage adaptatif gaussien
 (robuste à l'éclairage non uniforme des photos), nettoyage par ouverture
 morphologique, recadrage serré sur la boîte englobante des pixels d'encre, puis
 redimensionnement à $128\times64$.
